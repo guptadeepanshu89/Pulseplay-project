@@ -1,0 +1,381 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Generic categorical-value store, replacing every fixed-vocabulary enum/plain
+// string column (event category/status, market/bet/wallet status, wallet
+// transaction/request type, notification type, ...). `code` is the stable
+// machine value (matches the old enum's value exactly, e.g. "CRICKET",
+// "OPEN") so the JSON API contract to the mobile app never changes; `label`
+// is the human-readable display text. Genuine free text (names, reasons,
+// messages) is NOT a lookup value and stays a plain String column.
+model LookupType {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique
+  name      String
+  isDeleted Int  @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lookups Lookup[]
+}
+
+model Lookup {
+  id           Int        @id @default(autoincrement())
+  lookupTypeId Int
+  lookupType   LookupType @relation(fields: [lookupTypeId], references: [id])
+  code         String
+  label        String
+  sortOrder    Int        @default(0)
+  isDeleted    Int    @default(0)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  eventsByCategory Event[]            @relation("EventCategory")
+  eventsByStatus   Event[]            @relation("EventStatus")
+  marketsByStatus  Market[]           @relation("MarketStatus")
+  selectionsByStatus MarketSelection[] @relation("MarketSelectionStatus")
+  betsByStatus     Bet[]              @relation("BetStatus")
+  walletsByStatus  Wallet[]           @relation("WalletStatus")
+  walletTxnByType  WalletTransaction[] @relation("WalletTransactionType")
+  walletTxnByStatus WalletTransaction[] @relation("WalletTransactionStatus")
+  walletTxnByRefType WalletTransaction[] @relation("WalletTransactionReferenceType")
+  ledgerByType     WalletLedger[]     @relation("WalletLedgerTransactionType")
+  ledgerByStatus   WalletLedger[]     @relation("WalletLedgerStatus")
+  ledgerByRefType  WalletLedger[]     @relation("WalletLedgerReferenceType")
+  requestsByType   WalletRequest[]    @relation("WalletRequestType")
+  requestsByStatus WalletRequest[]    @relation("WalletRequestStatus")
+  notificationsByType Notification[] @relation("NotificationType")
+
+  @@unique([lookupTypeId, code])
+  @@index([lookupTypeId])
+}
+
+// Who a User is allowed to be. Immutable per user. Ids are cached at boot
+// (lib/roleCache.ts); authorization compares ids, never strings.
+model Role {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique
+  name      String
+  isDeleted Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users User[]
+}
+
+// A tenant / organisation (e.g. one reseller and everyone under them) — NOT
+// a person. Its people are Users pointing at it via User.clientId.
+model Client {
+  id               Int      @id @default(autoincrement())
+  code             String   @unique
+  name             String
+  isActive         Int      @default(1)
+  isDeleted        Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  createdByUserId  Int?
+  createdByUser    User?    @relation("ClientCreatedBy", fields: [createdByUserId], references: [id])
+  modifiedByUserId Int?
+  modifiedByUser   User?    @relation("ClientModifiedBy", fields: [modifiedByUserId], references: [id])
+
+  users          User[]          @relation("ClientUsers")
+  walletRequests WalletRequest[]
+  bets           Bet[]
+}
+
+model User {
+  id           Int     @id @default(autoincrement())
+  name         String
+  userCode     String  @unique
+  email        String  @unique
+  mobile       String  @unique
+  avatarUrl    String?
+  passwordHash String
+  roleId       Int
+  role         Role    @relation(fields: [roleId], references: [id])
+  // NULL only for SUPER_ADMIN (enforced by a DB trigger — see the rbac migration).
+  clientId     Int?
+  client       Client? @relation("ClientUsers", fields: [clientId], references: [id])
+  // isActive = block/unblock (reversible); isDeleted = soft delete (not).
+  isActive           Int       @default(1)
+  mustChangePassword Int       @default(0)
+  // Tokens issued before this instant are rejected.
+  passwordChangedAt  DateTime?
+  // Captured on each successful login; last-known values only (not a login
+  // history log — that would be a separate append-only table).
+  lastLoginIp  String?
+  lastLoginAt  DateTime?
+  isDeleted    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  createdByUserId  Int?
+  createdByUser    User?  @relation("UserCreatedBy", fields: [createdByUserId], references: [id])
+  modifiedByUserId Int?
+  modifiedByUser   User?  @relation("UserModifiedBy", fields: [modifiedByUserId], references: [id])
+
+  wallet        Wallet?
+  bets          Bet[]
+  notifications Notification[]
+  createdUsers  User[] @relation("UserCreatedBy")
+  modifiedUsers User[] @relation("UserModifiedBy")
+  createdClients  Client[] @relation("ClientCreatedBy")
+  modifiedClients Client[] @relation("ClientModifiedBy")
+  modifiedMarkets     Market[]          @relation("MarketModifiedBy")
+  modifiedSelections  MarketSelection[] @relation("MarketSelectionModifiedBy")
+  resolvedRequests    WalletRequest[]   @relation("WalletRequestResolvedBy")
+  createdTransactions WalletTransaction[] @relation("WalletTransactionCreatedBy")
+  createdLedgerEntries WalletLedger[]   @relation("WalletLedgerCreatedBy")
+
+  @@index([clientId, roleId, isDeleted])
+}
+
+model Event {
+  id            Int      @id @default(autoincrement())
+  // TheSportsDB's fixture id, for fixturesSync.ts to dedupe on repeated syncs. Null for
+  // seeded/manual events, which have no external source.
+  externalId    String?  @unique
+  categoryId    Int
+  category      Lookup   @relation("EventCategory", fields: [categoryId], references: [id])
+  name          String
+  competition   String
+  startTime     DateTime
+  statusId      Int
+  status        Lookup   @relation("EventStatus", fields: [statusId], references: [id])
+  scoreLabel    String?
+  minuteLabel   String?
+  homeTeamName  String?
+  homeTeamShort String?
+  homeScore     String?
+  awayTeamName  String?
+  awayTeamShort String?
+  awayScore     String?
+  symbol        String?
+  // Real 24h change % from CoinGecko, refreshed every cryptoFeed tick. Nullable
+  // because non-CRYPTO events (and a crypto event before the feed's first tick)
+  // have no value yet — never fall back to a client-computed guess for this.
+  changePercent24h Decimal? @db.Decimal(8, 4)
+  isDeleted     Int  @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  markets Market[]
+
+  @@index([categoryId])
+  @@index([statusId])
+}
+
+model Market {
+  id         Int      @id @default(autoincrement())
+  eventId    Int
+  event      Event    @relation(fields: [eventId], references: [id])
+  marketType String
+  name       String
+  statusId   Int
+  status     Lookup   @relation("MarketStatus", fields: [statusId], references: [id])
+  version    Int      @default(1)
+  // The User (admin accounts are ordinary User rows) behind an admin-driven
+  // change — currently only settle. Left null for system/worker writes.
+  // Market has no per-event audit table of its own, unlike Wallet (which has
+  // WalletLedger), so this is the only "who touched this" record for it.
+  modifiedByUserId Int?
+  modifiedByUser   User? @relation("MarketModifiedBy", fields: [modifiedByUserId], references: [id])
+  isDeleted  Int  @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  selections MarketSelection[]
+  legs       BetSelectionLeg[]
+
+  @@index([eventId])
+  @@index([statusId])
+}
+
+model MarketSelection {
+  id           Int      @id @default(autoincrement())
+  marketId     Int
+  market       Market   @relation(fields: [marketId], references: [id])
+  code         String
+  name         String
+  currentPrice Decimal  @db.Decimal(8, 4)
+  priceVersion Int      @default(1)
+  statusId     Int
+  status       Lookup   @relation("MarketSelectionStatus", fields: [statusId], references: [id])
+  sortOrder    Int      @default(0)
+  // Same convention as Market.modifiedByUserId — set only on an admin-driven
+  // change (settle), left null for the price-jitter workers.
+  modifiedByUserId Int?
+  modifiedByUser   User? @relation("MarketSelectionModifiedBy", fields: [modifiedByUserId], references: [id])
+  isDeleted    Int  @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([marketId])
+  @@index([statusId])
+}
+
+model Bet {
+  id              Int       @id @default(autoincrement())
+  userId          Int
+  user            User      @relation(fields: [userId], references: [id])
+  // Denormalised tenant key = user.clientId (immutable: users never change client).
+  // Lets tenant-scoped bet lists skip a join to User.
+  clientId        Int
+  client          Client    @relation(fields: [clientId], references: [id])
+  stake           Decimal   @db.Decimal(14, 2)
+  combinedOdds    Decimal   @db.Decimal(8, 4)
+  potentialReturn Decimal   @db.Decimal(14, 2)
+  statusId        Int
+  status          Lookup    @relation("BetStatus", fields: [statusId], references: [id])
+  legCount        Int
+  placedAt        DateTime  @default(now())
+  settledAt       DateTime?
+  updatedAt       DateTime  @updatedAt
+
+  selections BetSelectionLeg[]
+
+  @@index([userId])
+  @@index([clientId, placedAt(sort: Desc)])
+  @@index([statusId])
+}
+
+model BetSelectionLeg {
+  id              Int     @id @default(autoincrement())
+  betId           Int
+  bet             Bet     @relation(fields: [betId], references: [id])
+  eventId         Int
+  eventName       String
+  marketId        Int
+  market          Market  @relation(fields: [marketId], references: [id])
+  marketName      String
+  selectionId     Int
+  selectionName   String
+  oddsAtPlacement Decimal @db.Decimal(8, 4)
+
+  @@index([betId])
+  @@index([marketId])
+}
+
+model Wallet {
+  id               Int      @id @default(autoincrement())
+  userId           Int      @unique
+  user             User     @relation(fields: [userId], references: [id])
+  currency         String
+  availableBalance Decimal  @db.Decimal(14, 2)
+  lockedBalance    Decimal  @db.Decimal(14, 2)
+  version          Int      @default(1)
+  statusId         Int
+  status           Lookup   @relation("WalletStatus", fields: [statusId], references: [id])
+  isDeleted        Int  @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  transactions WalletTransaction[]
+  ledger       WalletLedger[]
+  requests     WalletRequest[]
+
+  @@index([statusId])
+}
+
+model WalletTransaction {
+  id              Int      @id @default(autoincrement())
+  walletId        Int
+  wallet          Wallet   @relation(fields: [walletId], references: [id])
+  userId          Int
+  typeId          Int
+  type            Lookup   @relation("WalletTransactionType", fields: [typeId], references: [id])
+  amount          Decimal  @db.Decimal(14, 2)
+  referenceTypeId Int?
+  referenceType   Lookup?  @relation("WalletTransactionReferenceType", fields: [referenceTypeId], references: [id])
+  referenceId     String?
+  statusId        Int
+  status          Lookup   @relation("WalletTransactionStatus", fields: [statusId], references: [id])
+  createdAt       DateTime @default(now())
+  createdByUserId Int?
+  createdByUser   User?    @relation("WalletTransactionCreatedBy", fields: [createdByUserId], references: [id])
+
+  @@index([walletId])
+  @@index([userId])
+  @@index([typeId])
+  @@index([statusId])
+}
+
+model WalletLedger {
+  id                Int      @id @default(autoincrement())
+  walletId          Int
+  wallet            Wallet   @relation(fields: [walletId], references: [id])
+  userId            Int
+  transactionTypeId Int
+  transactionType   Lookup   @relation("WalletLedgerTransactionType", fields: [transactionTypeId], references: [id])
+  amount            Decimal  @db.Decimal(14, 2)
+  beforeAvailable   Decimal  @db.Decimal(14, 2)
+  afterAvailable    Decimal  @db.Decimal(14, 2)
+  beforeLocked      Decimal  @db.Decimal(14, 2)
+  afterLocked       Decimal  @db.Decimal(14, 2)
+  referenceTypeId   Int?
+  referenceType     Lookup?  @relation("WalletLedgerReferenceType", fields: [referenceTypeId], references: [id])
+  referenceId       String?
+  statusId          Int
+  status            Lookup   @relation("WalletLedgerStatus", fields: [statusId], references: [id])
+  createdAt         DateTime @default(now())
+  createdByUserId   Int?
+  createdByUser     User?    @relation("WalletLedgerCreatedBy", fields: [createdByUserId], references: [id])
+
+  @@index([walletId])
+  @@index([transactionTypeId])
+}
+
+model WalletRequest {
+  id          Int       @id @default(autoincrement())
+  walletId    Int
+  wallet      Wallet    @relation(fields: [walletId], references: [id])
+  userId      Int
+  // Routing key: which Client's approvers see this request. Set server-side from
+  // the requesting user's clientId — never taken from the request body.
+  clientId    Int
+  client      Client    @relation(fields: [clientId], references: [id])
+  typeId      Int
+  type        Lookup    @relation("WalletRequestType", fields: [typeId], references: [id])
+  amount      Decimal   @db.Decimal(14, 2)
+  reason      String
+  statusId    Int
+  status      Lookup    @relation("WalletRequestStatus", fields: [statusId], references: [id])
+  requestedAt DateTime  @default(now())
+  resolvedAt  DateTime?
+  resolvedByUserId Int?
+  resolvedByUser   User?     @relation("WalletRequestResolvedBy", fields: [resolvedByUserId], references: [id])
+
+  @@index([walletId])
+  @@index([userId])
+  @@index([statusId])
+  @@index([clientId, statusId, requestedAt(sort: Desc)])
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  typeId    Int
+  type      Lookup   @relation("NotificationType", fields: [typeId], references: [id])
+  title     String
+  message   String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([typeId])
+}
+
+model PriceHistory {
+  id        Int      @id @default(autoincrement())
+  symbol    String
+  timestamp DateTime
+  price     Decimal  @db.Decimal(14, 2)
+
+  @@index([symbol, timestamp])
+}
