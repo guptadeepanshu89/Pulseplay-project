@@ -26,7 +26,8 @@ interface TimelineEntry {
   description: string;
 }
 
-function getTimelineForEvent(event: MarketEvent, colors: ColorPalette): TimelineEntry[] {
+// No live timeline feed exists in the backend — demo entries only, clearly labeled in UI.
+function getDemoTimelineForEvent(event: MarketEvent, colors: ColorPalette): TimelineEntry[] {
   const home = event.homeTeam?.name ?? event.name;
   const away = event.awayTeam?.name ?? '';
   return [
@@ -58,7 +59,7 @@ export function LiveMatchScreen({ route, navigation }: Props) {
     );
   }
 
-  const timeline = event.category === 'FOOTBALL' ? getTimelineForEvent(event, colors) : [];
+  const timeline = event.category === 'FOOTBALL' ? getDemoTimelineForEvent(event, colors) : [];
 
   const handleSelect = (market: Market, selectionId: number) => {
     const selection = market.selections.find((item) => item.id === selectionId);
@@ -101,21 +102,30 @@ export function LiveMatchScreen({ route, navigation }: Props) {
         <AppText variant="h3" style={styles.sectionTitle}>
           Match Timeline
         </AppText>
+        <AppText variant="caption" color={colors.textMuted} style={styles.demoLabel}>
+          Demo timeline — not live data
+        </AppText>
         <Card style={styles.timelineCard}>
-          {timeline.map((entry, index) => (
-            <View
-              key={`${entry.minute}-${entry.description}`}
-              style={[styles.timelineRow, index === timeline.length - 1 && styles.timelineRowLast]}
-            >
-              <AppText variant="captionMedium" color={colors.textMuted} style={styles.timelineMinute}>
-                {entry.minute}
-              </AppText>
-              <Ionicons name={entry.icon} size={layout.iconSizeSmall} color={entry.iconColor} />
-              <AppText variant="bodyMedium" style={styles.timelineText}>
-                {entry.description}
-              </AppText>
-            </View>
-          ))}
+          {timeline.length === 0 ? (
+            <AppText variant="body" color={colors.textSecondary}>
+              No timeline available for this match.
+            </AppText>
+          ) : (
+            timeline.map((entry, index) => (
+              <View
+                key={`${entry.minute}-${entry.description}`}
+                style={[styles.timelineRow, index === timeline.length - 1 && styles.timelineRowLast]}
+              >
+                <AppText variant="captionMedium" color={colors.textMuted} style={styles.timelineMinute}>
+                  {entry.minute}
+                </AppText>
+                <Ionicons name={entry.icon} size={layout.iconSizeSmall} color={entry.iconColor} />
+                <AppText variant="bodyMedium" style={styles.timelineText}>
+                  {entry.description}
+                </AppText>
+              </View>
+            ))
+          )}
         </Card>
 
         <AppText variant="h3" style={styles.sectionTitle}>
@@ -156,6 +166,9 @@ const createStyles = (colors: ColorPalette) =>
       marginTop: spacing.sm,
     },
     sectionTitle: {
+      marginBottom: spacing.xs,
+    },
+    demoLabel: {
       marginBottom: spacing.md,
     },
     timelineCard: {

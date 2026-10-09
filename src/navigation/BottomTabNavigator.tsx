@@ -26,7 +26,7 @@ const TAB_LABELS: Record<keyof MainTabsParamList, string> = {
   Home: 'Home',
   Markets: 'Markets',
   Wallet: 'Wallet',
-  MyBets: 'My Bets',
+  MyBets: 'History',
   Profile: 'Profile',
 };
 

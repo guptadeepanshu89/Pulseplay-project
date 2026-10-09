@@ -6,8 +6,14 @@ import { loginRateLimit } from '../../core/middleware/loginRateLimit';
 import { validateBody } from '../../core/middleware/validate';
 import { clearAuthCookie, setAuthCookie } from '../../core/tokens';
 import { asyncHandler } from '../../lib/asyncHandler';
-import { changePasswordSchema, loginSchema, logoutSchema } from './schemas';
-import { changePassword, getMe, login } from './service';
+import {
+  changePasswordSchema,
+  forgotPasswordSchema,
+  loginSchema,
+  logoutSchema,
+  resetPasswordSchema,
+} from './schemas';
+import { changePassword, getMe, login, requestPasswordReset, resetPasswordWithToken } from './service';
 
 const router = Router();
 
@@ -33,7 +39,29 @@ router.post('/logout', validateBody(logoutSchema), (req, res) => {
   res.status(204).end();
 });
 
-const anyApp = authenticate(['mobile', 'admin'], { allowPasswordChangePending: true });
+router.post(
+  '/forgot-password',
+  ...loginRateLimit,
+  validateBody(forgotPasswordSchema),
+  asyncHandler(async (req, res) => {
+    res.json(await requestPasswordReset(req.body.identifier));
+  }),
+);
+
+router.post(
+  '/reset-password',
+  ...loginRateLimit,
+  validateBody(resetPasswordSchema),
+  asyncHandler(async (req, res) => {
+    await resetPasswordWithToken(req.body.token, req.body.newPassword);
+    res.json({ ok: true });
+  }),
+);
+
+// Prefer admin cookie when both apps share a host (localhost): otherwise a
+// leftover mobile Player session would win /auth/me and break the admin UI.
+// Mobile-only callers (Bearer or pulseplay_token alone) are unchanged.
+const anyApp = authenticate(['admin', 'mobile'], { allowPasswordChangePending: true });
 
 router.get(
   '/me',

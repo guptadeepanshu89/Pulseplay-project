@@ -134,9 +134,25 @@ describe('BT — settlement', () => {
     expect(bet.body.potentialReturn).toBe(38.32); // 33.33 * 1.15 = 38.3295 → floored, not rounded
 
     await settle(cookie, market.id, selections[1].id); // the other selection wins → our bet loses
-    const stored = await prisma.bet.findFirstOrThrow({ include: { status: true } });
-    expect(stored.status.code).toBe('LOST');
+    const stored = await prisma.bet.findFirstOrThrow({ include: { Lookup: true } });
+    expect(stored.Lookup.code).toBe('LOST');
     expect(await walletOf(user.id)).toEqual({ available: 966.67, locked: 0 });
+  });
+
+  it('BT-07a winningSelectionId from another market is rejected and leaves the market OPEN', async () => {
+    const cookie = await signInAdmin();
+    const target = await createOpenMarket([2.0, 3.0]);
+    const other = await createOpenMarket([2.0, 3.0]);
+
+    const res = await settle(cookie, target.market.id, other.selections[0].id);
+    expect(res.status).toBe(404);
+
+    const market = await prisma.market.findUniqueOrThrow({
+      where: { id: target.market.id },
+      include: { Lookup: true },
+    });
+    expect(market.Lookup.code).toBe('OPEN');
+    expect(market.winningSelectionId).toBeNull();
   });
 
   it('BT-07 settling twice is rejected and credits only once', async () => {
@@ -165,7 +181,7 @@ describe('BT — settlement', () => {
     expect(await walletOf(loser.user.id)).toEqual({ available: 950, locked: 0 });
   });
 
-  it('BT-09 a multi-leg bet is left OPEN when one of its markets settles (documented cut)', async () => {
+  it('BT-09 a multi-leg bet stays OPEN when one leg wins and other legs are still open', async () => {
     const { user } = await createUserWithWallet(1000);
     const cookie = await signInAdmin();
     const first = await createOpenMarket([2.0, 3.0]);
@@ -180,11 +196,58 @@ describe('BT — settlement', () => {
     expect(bet.status).toBe(201);
     expect(bet.body.combinedOdds).toBe(4);
 
-    await settle(cookie, first.market.id, first.selections[0].id);
+    const res = await settle(cookie, first.market.id, first.selections[0].id);
+    expect(res.body.pendingAccumulatorCount).toBe(1);
+    expect(res.body.settledBets).toHaveLength(0);
 
-    const stored = await prisma.bet.findFirstOrThrow({ include: { status: true } });
-    expect(stored.status.code).toBe('OPEN');
+    const stored = await prisma.bet.findFirstOrThrow({ include: { Lookup: true } });
+    expect(stored.Lookup.code).toBe('OPEN');
     expect(await walletOf(user.id)).toEqual({ available: 900, locked: 100 });
+  });
+
+  it('BT-09b a multi-leg bet loses immediately when any leg loses', async () => {
+    const { user } = await createUserWithWallet(1000);
+    const cookie = await signInAdmin();
+    const first = await createOpenMarket([2.0, 3.0]);
+    const second = await createOpenMarket([2.0, 3.0]);
+    const token = await loginToken(user.email);
+
+    await placeBet(
+      token,
+      [betLeg(first.event, first.market, first.selections[0]), betLeg(second.event, second.market, second.selections[0])],
+      100,
+    );
+
+    // First leg loses → whole accumulator settles LOST even though second market is open.
+    await settle(cookie, first.market.id, first.selections[1].id);
+
+    const stored = await prisma.bet.findFirstOrThrow({ include: { Lookup: true } });
+    expect(stored.Lookup.code).toBe('LOST');
+    expect(await walletOf(user.id)).toEqual({ available: 900, locked: 0 });
+  });
+
+  it('BT-09c a multi-leg bet wins only after every leg wins', async () => {
+    const { user } = await createUserWithWallet(1000);
+    const cookie = await signInAdmin();
+    const first = await createOpenMarket([2.0, 3.0]);
+    const second = await createOpenMarket([2.0, 3.0]);
+    const token = await loginToken(user.email);
+
+    await placeBet(
+      token,
+      [betLeg(first.event, first.market, first.selections[0]), betLeg(second.event, second.market, second.selections[0])],
+      100,
+    );
+
+    await settle(cookie, first.market.id, first.selections[0].id);
+    expect((await prisma.bet.findFirstOrThrow({ include: { Lookup: true } })).Lookup.code).toBe('OPEN');
+
+    const res = await settle(cookie, second.market.id, second.selections[0].id);
+    expect(res.body.settledBets).toHaveLength(1);
+    expect(res.body.settledBets[0].status).toBe('WON');
+    expect(res.body.pendingAccumulatorCount).toBe(0);
+    // combined odds 4 → potentialReturn 400
+    expect(await walletOf(user.id)).toEqual({ available: 1300, locked: 0 });
   });
 
   it('BT-10 settle records the acting admin user on the market and its selections', async () => {

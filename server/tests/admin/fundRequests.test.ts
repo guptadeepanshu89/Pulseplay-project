@@ -54,7 +54,7 @@ describe('FR-06 — filing a request notifies the client\'s active Client Admins
 
     await request(playerToken, { type: 'INCREASE', amount: 50, reason: 'notify me' });
 
-    expect(await prisma.notification.count({ where: { userId: admin.id, type: { code: 'WALLET_REQUEST_RECEIVED' } } })).toBe(1);
+    expect(await prisma.notification.count({ where: { userId: admin.id, Lookup: { code: 'WALLET_REQUEST_RECEIVED' } } })).toBe(1);
     expect(await prisma.notification.count({ where: { userId: blockedAdmin.id } })).toBe(0);
     expect(await prisma.notification.count({ where: { userId: foreignAdmin.id } })).toBe(0);
   });

@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { ScrollView, StyleSheet } from 'react-native';
 
 import { AppButton, AppText, Header, Screen, TextField } from '@components/common';
+import { ApiError } from '@/api/client';
 import { spacing } from '@theme';
 import { layout } from '@constants/layout';
 import { useTheme } from '@context/ThemeContext';
@@ -14,18 +15,24 @@ type Props = NativeStackScreenProps<RootStackParamList, 'CreateRequest'>;
 export function CreateRequestScreen({ navigation }: Props) {
   const { colors } = useTheme();
   const [amount, setAmount] = useState('');
-  const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | undefined>();
 
   const numericAmount = Number(amount.replace(/[^0-9]/g, ''));
-  const canSubmit = numericAmount > 0 && reason.trim().length > 0 && !submitting;
+  const canSubmit = numericAmount > 0 && !submitting;
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
+    setError(undefined);
     setSubmitting(true);
-    await createWalletRequest('INCREASE', numericAmount, reason.trim());
-    setSubmitting(false);
-    navigation.replace('PermissionRequests');
+    try {
+      await createWalletRequest('INCREASE', numericAmount);
+      navigation.replace('PermissionRequests');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not create request. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -40,14 +47,12 @@ export function CreateRequestScreen({ navigation }: Props) {
           value={amount}
           onChangeText={setAmount}
         />
-        <TextField
-          label="Reason"
-          icon="chatbox-ellipses-outline"
-          placeholder="Add any additional note..."
-          value={reason}
-          onChangeText={setReason}
-          multiline
-        />
+
+        {error && (
+          <AppText variant="caption" color={colors.negative} align="center">
+            {error}
+          </AppText>
+        )}
 
         <AppButton
           label="Submit Request"

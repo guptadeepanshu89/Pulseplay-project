@@ -7,7 +7,7 @@ import type { CurrentUser } from '../types';
 interface AuthContextValue {
   user: CurrentUser | null;
   loading: boolean;
-  login: (identifier: string, password: string) => Promise<void>;
+  login: (identifier: string, password: string) => Promise<CurrentUser>;
   logout: () => Promise<void>;
   // Called after a successful change-password, so the gate lifts without a full reload.
   setUser: (user: CurrentUser) => void;
@@ -35,7 +35,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback(async (identifier: string, password: string) => {
-    setUser(await loginRequest(identifier, password));
+    const next = await loginRequest(identifier, password);
+    setUser(next);
+    return next;
   }, []);
 
   const logout = useCallback(async () => {
@@ -55,4 +57,9 @@ export function useAuth(): AuthContextValue {
   return ctx;
 }
 
-export const messageOf = (error: unknown): string => (isApiError(error) ? error.message : 'Something went wrong — please try again');
+export const messageOf = (error: unknown): string => {
+  if (!isApiError(error)) return 'Something went wrong — please try again';
+  const details = error.details?.map((d) => d.message).filter(Boolean);
+  if (details && details.length > 0) return details.join(' · ');
+  return error.message;
+};

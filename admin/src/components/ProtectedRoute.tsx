@@ -1,15 +1,29 @@
 import { Spin } from 'antd';
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 
 import { useAuth } from '../context/AuthContext';
+import type { RoleCode } from '../types';
 
-// Gate order matters: signed-out → /login; a temporary password still pending
-// → /change-password (the server enforces this too — everything else 403s
-// with PASSWORD_CHANGE_REQUIRED — this just avoids the round trip).
+const ADMIN_ROLES: readonly RoleCode[] = ['SUPER_ADMIN', 'CLIENT_ADMIN'];
+
+const isAdminRole = (role: RoleCode) => ADMIN_ROLES.includes(role);
+
+// Gate order matters: signed-out → /login; non-admin (e.g. Player) → clear and
+// /login; a temporary password still pending → /change-password (the server
+// enforces this too — everything else 403s with PASSWORD_CHANGE_REQUIRED —
+// this just avoids the round trip).
 export function ProtectedRoute({ children }: { children: ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, loading, logout } = useAuth();
   const location = useLocation();
+  const isAdmin = Boolean(user && isAdminRole(user.role));
+
+  // Drop a Player (or any non-admin) session that /auth/me may have restored
+  // from a leftover mobile cookie on the same host.
+  useEffect(() => {
+    if (loading || !user || isAdminRole(user.role)) return;
+    void logout();
+  }, [loading, user, logout]);
 
   if (loading) {
     return (
@@ -18,8 +32,9 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
       </div>
     );
   }
-  if (!user) return <Navigate to="/login" state={{ from: location }} replace />;
-  if (user.mustChangePassword && location.pathname !== '/change-password') {
+  if (!user || !isAdmin) return <Navigate to="/login" state={{ from: location }} replace />;
+  // Coerce in case a stale client ever stored 0/1 instead of boolean.
+  if (Boolean(user.mustChangePassword) && location.pathname !== '/change-password') {
     return <Navigate to="/change-password" replace />;
   }
   return <>{children}</>;

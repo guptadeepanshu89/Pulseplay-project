@@ -31,9 +31,9 @@ describe('MG-07 — seeding', () => {
 
   it('creates one SUPER_ADMIN (no client), one CLIENT_ADMIN and one CLIENT_USER, the latter two in the Demo Client', async () => {
     runSeed();
-    const users = await prisma.user.findMany({ include: { role: true, client: true }, orderBy: { id: 'asc' } });
+    const users = await prisma.user.findMany({ include: { Role: true, client: true }, orderBy: { id: 'asc' } });
 
-    expect(users.map((user) => [user.role.code, user.client?.code ?? null])).toEqual([
+    expect(users.map((user) => [user.Role.code, user.client?.code ?? null])).toEqual([
       ['SUPER_ADMIN', null],
       ['CLIENT_ADMIN', 'DEMO'],
       ['CLIENT_USER', 'DEMO'],

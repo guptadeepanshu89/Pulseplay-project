@@ -59,19 +59,21 @@ export function MarketOddsCard({
   );
 }
 
-const CAROUSEL_CARD_WIDTH = 240;
-export const MARKET_ODDS_CAROUSEL_HEIGHT = 200;
+const CAROUSEL_CARD_WIDTH = 260;
+/** Approximate content height for carousel row / skeleton (card itself sizes to content). */
+export const MARKET_ODDS_CAROUSEL_HEIGHT = 148;
 
 const styles = StyleSheet.create({
   card: {
     width: CAROUSEL_CARD_WIDTH,
-    height: MARKET_ODDS_CAROUSEL_HEIGHT,
     borderRadius: radius.lg,
+    overflow: 'hidden',
   },
   cardFullWidth: {
     width: '100%',
     marginBottom: spacing.md,
     borderRadius: radius.lg,
+    overflow: 'hidden',
   },
   header: {
     flexDirection: 'row',
@@ -84,10 +86,11 @@ const styles = StyleSheet.create({
   },
   name: {
     marginTop: spacing.xxs,
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
   },
   selections: {
     flexDirection: 'row',
-    gap: spacing.sm,
+    gap: spacing.xs,
+    alignItems: 'stretch',
   },
 });

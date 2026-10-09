@@ -51,14 +51,17 @@ describe('BT — fund requests', () => {
     const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: user.id } });
     expect(wallet.availableBalance.toNumber()).toBe(6000);
 
-    const txn = await prisma.walletTransaction.findFirstOrThrow({ where: { userId: user.id }, include: { type: true } });
-    expect(txn.type.code).toBe('ADMIN_CREDIT');
+    const txn = await prisma.walletTransaction.findFirstOrThrow({
+      where: { userId: user.id },
+      include: { Lookup_WalletTransaction_typeIdToLookup: true },
+    });
+    expect(txn.Lookup_WalletTransaction_typeIdToLookup.code).toBe('ADMIN_CREDIT');
     expect(txn.amount.toNumber()).toBe(5000);
     const ledger = await prisma.walletLedger.findFirstOrThrow({ where: { userId: user.id } });
     expect(ledger.beforeAvailable.toNumber()).toBe(1000);
     expect(ledger.afterAvailable.toNumber()).toBe(6000);
-    const notification = await prisma.notification.findFirstOrThrow({ where: { userId: user.id }, include: { type: true } });
-    expect(notification.type.code).toBe('WALLET_APPROVED');
+    const notification = await prisma.notification.findFirstOrThrow({ where: { userId: user.id }, include: { Lookup: true } });
+    expect(notification.Lookup.code).toBe('WALLET_APPROVED');
   });
 
   it('BT-14 approving twice is rejected and credits only once', async () => {
@@ -83,8 +86,8 @@ describe('BT — fund requests', () => {
     expect((await approve(cookie, created.body.id)).status).toBe(409);
     const wallet = await prisma.wallet.findUniqueOrThrow({ where: { userId: user.id } });
     expect(wallet.availableBalance.toNumber()).toBe(1000);
-    const notification = await prisma.notification.findFirstOrThrow({ where: { userId: user.id }, include: { type: true } });
-    expect(notification.type.code).toBe('WALLET_REJECTED');
+    const notification = await prisma.notification.findFirstOrThrow({ where: { userId: user.id }, include: { Lookup: true } });
+    expect(notification.Lookup.code).toBe('WALLET_REJECTED');
   });
 });
 

@@ -3,9 +3,11 @@ import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { AppButton, AppText, Header, IconBadge, Screen, TextField } from '@components/common';
+import { ApiError } from '@/api/client';
 import { useTheme } from '@context/ThemeContext';
+import { forgotPassword, resetPassword } from '@services/authService';
 import { ColorPalette, spacing } from '@theme';
-import { emailOrMobileError } from '@utils/validation';
+import { emailOrMobileError, passwordError } from '@utils/validation';
 import { RootStackParamList } from '@navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ForgotPassword'>;
@@ -20,21 +22,47 @@ export function ForgotPasswordScreen({ navigation }: Props) {
   const [touched, setTouched] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [sent, setSent] = useState(false);
+  const [formError, setFormError] = useState<string | undefined>();
+  const [resetToken, setResetToken] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [resetting, setResetting] = useState(false);
+  const [resetDone, setResetDone] = useState(false);
+  const [resetError, setResetError] = useState<string | undefined>();
 
   const error = touched ? emailOrMobileError(identifier) : undefined;
   const canSubmit = !emailOrMobileError(identifier) && !submitting;
+  const canReset = resetToken.trim().length > 0 && !passwordError(newPassword) && !resetting;
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     setTouched(true);
+    setFormError(undefined);
     if (emailOrMobileError(identifier)) return;
     setSubmitting(true);
-    setTimeout(() => {
-      setSubmitting(false);
+    try {
+      await forgotPassword(identifier.trim());
       setSent(true);
-    }, 600);
+    } catch (err) {
+      setFormError(err instanceof ApiError ? err.message : 'Something went wrong. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  if (sent) {
+  const handleReset = async () => {
+    setResetError(undefined);
+    if (!canReset) return;
+    setResetting(true);
+    try {
+      await resetPassword(resetToken.trim(), newPassword);
+      setResetDone(true);
+    } catch (err) {
+      setResetError(err instanceof ApiError ? err.message : 'Something went wrong. Please try again.');
+    } finally {
+      setResetting(false);
+    }
+  };
+
+  if (sent && resetDone) {
     return (
       <Screen>
         <Header title="Reset Password" onBack={navigation.goBack} />
@@ -48,12 +76,69 @@ export function ForgotPasswordScreen({ navigation }: Props) {
             style={styles.successIcon}
           />
           <AppText variant="h2" align="center" style={styles.successTitle}>
-            Reset Link Sent
+            Password Updated
           </AppText>
           <AppText variant="body" color={colors.textSecondary} align="center" style={styles.successBody}>
-            If an account exists for {identifier.trim()}, we&apos;ve sent instructions to reset your password.
+            You can now log in with your new password.
           </AppText>
           <AppButton label="Back to Log In" onPress={navigation.goBack} fullWidth size="lg" />
+        </View>
+      </Screen>
+    );
+  }
+
+  if (sent) {
+    return (
+      <Screen>
+        <Header title="Reset Password" onBack={navigation.goBack} />
+        <View style={styles.content}>
+          <IconBadge
+            icon="checkmark"
+            size={SUCCESS_ICON_SIZE}
+            iconSize={SUCCESS_GLYPH_SIZE}
+            color={colors.white}
+            backgroundColor={colors.positive}
+            style={styles.successIcon}
+          />
+          <AppText variant="h2" align="center" style={styles.successTitle}>
+            Reset Request Received
+          </AppText>
+          <AppText variant="body" color={colors.textSecondary} align="center" style={styles.successBody}>
+            If an account exists for {identifier.trim()}, a reset code was issued. Enter the code and a new
+            password below. (Email/SMS delivery is not configured — ask an admin for the code from server
+            logs.)
+          </AppText>
+          <TextField
+            label="Reset Code"
+            icon="key-outline"
+            placeholder="Paste reset code"
+            autoCapitalize="none"
+            value={resetToken}
+            onChangeText={setResetToken}
+          />
+          <TextField
+            label="New Password"
+            icon="lock-closed-outline"
+            placeholder="At least 10 characters"
+            secureTextEntry
+            value={newPassword}
+            onChangeText={setNewPassword}
+            error={newPassword ? passwordError(newPassword) : undefined}
+          />
+          {resetError && (
+            <AppText variant="caption" color={colors.negative} align="center">
+              {resetError}
+            </AppText>
+          )}
+          <AppButton
+            label="Set New Password"
+            onPress={handleReset}
+            disabled={!canReset}
+            loading={resetting}
+            fullWidth
+            size="lg"
+          />
+          <AppButton label="Back to Log In" onPress={navigation.goBack} fullWidth size="lg" variant="ghost" />
         </View>
       </Screen>
     );
@@ -64,8 +149,7 @@ export function ForgotPasswordScreen({ navigation }: Props) {
       <Header title="Reset Password" onBack={navigation.goBack} />
       <View style={styles.content}>
         <AppText variant="body" color={colors.textSecondary} style={styles.description}>
-          Enter the email or mobile number linked to your account and we&apos;ll send you a link to reset your
-          password.
+          Enter the email or mobile number linked to your account and we&apos;ll issue a reset code.
         </AppText>
         <TextField
           label="Email or Mobile Number"
@@ -78,8 +162,13 @@ export function ForgotPasswordScreen({ navigation }: Props) {
           onBlur={() => setTouched(true)}
           error={error}
         />
+        {formError && (
+          <AppText variant="caption" color={colors.negative} align="center">
+            {formError}
+          </AppText>
+        )}
         <AppButton
-          label="Send Reset Link"
+          label="Send Reset Code"
           onPress={handleSubmit}
           disabled={!canSubmit}
           loading={submitting}
@@ -113,6 +202,7 @@ const createStyles = (colors: ColorPalette) =>
     },
     successIcon: {
       marginBottom: spacing.sm,
+      alignSelf: 'center',
     },
     successTitle: {
       marginBottom: spacing.xs,

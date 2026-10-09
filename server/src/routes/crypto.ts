@@ -5,9 +5,31 @@ import { authenticate } from '../core/middleware/authenticate';
 import { serialize } from '../lib/serialize';
 import { asyncHandler } from '../lib/asyncHandler';
 import { LOOKUP_IDS } from '../lib/lookupCache';
+import { getBybitTicker } from '../modules/crypto/bybit.service';
+
+const BYBIT_SYMBOL_BY_CHART: Record<string, string> = { BTC: 'BTCUSDT', ETH: 'ETHUSDT', SOL: 'SOLUSDT' };
 
 const router = Router();
 router.use(authenticate(['mobile', 'admin']));
+router.use((req, res, next) => {
+  if (req.method === 'GET' || req.method === 'HEAD') {
+    next();
+    return;
+  }
+  res.status(405).json({ error: 'Method not allowed', code: 'METHOD_NOT_ALLOWED' });
+});
+
+router.get('/bybit', (_req, res) => {
+  res.status(400).json({ error: 'Invalid symbol', code: 'INVALID_SYMBOL' });
+});
+
+router.get(
+  '/bybit/:symbol',
+  asyncHandler(async (req, res) => {
+    const data = await getBybitTicker(req.params.symbol);
+    res.json({ success: true, data });
+  }),
+);
 
 // Number.MAX_SAFE_INTEGER here previously overflowed JS Date's valid range
 // (±8.64e15ms from epoch), producing an Invalid Date that crashed the whole
@@ -55,8 +77,9 @@ router.get(
       orderBy: { timestamp: 'asc' },
     });
 
-    const currentPrice = points.length > 0 ? points[points.length - 1].price.toNumber() : 0;
+    let currentPrice = points.length > 0 ? points[points.length - 1].price.toNumber() : 0;
     const firstPrice = points.length > 0 ? points[0].price.toNumber() : currentPrice;
+    let livePrice: number | undefined;
 
     // For 24H, prefer CoinGecko's own 24h change — it reflects the real market
     // move over the last 24h, not just however much history our own feed has
@@ -64,26 +87,57 @@ router.get(
     // every other timeframe we don't have an external source, so we compute
     // from our own stored window — the best available, and now computed once
     // here instead of duplicated (and drifting) on every client.
-    let changePercent: number;
-    let changeAmount: number;
+    let changePercent = 0;
+    let changeAmount = 0;
     const event = timeframe === '24H'
       ? await prisma.event.findFirst({ where: { categoryId: LOOKUP_IDS.EVENT_CATEGORY.CRYPTO, symbol } })
       : null;
 
-    if (timeframe === '24H' && event?.changePercent24h != null) {
-      changePercent = event.changePercent24h.toNumber();
+    const applyPercent = (percent: number) => {
+      changePercent = percent;
       const previousPrice = changePercent === -100 ? currentPrice : currentPrice / (1 + changePercent / 100);
       changeAmount = currentPrice - previousPrice;
-    } else {
+    };
+
+    let applied = false;
+    if (timeframe === '24H' && BYBIT_SYMBOL_BY_CHART[symbol]) {
+      try {
+        const ticker = await getBybitTicker(BYBIT_SYMBOL_BY_CHART[symbol]);
+        const live = Number(ticker.lastPrice);
+        if (Number.isFinite(live) && live > 0) {
+          currentPrice = live;
+          livePrice = live;
+        }
+        const ratio = Number(ticker.price24hPcnt);
+        if (!Number.isFinite(ratio)) throw new Error('missing 24h change');
+        applyPercent(ratio * 100);
+        applied = true;
+      } catch {
+        applied = false;
+      }
+    }
+    if (!applied && timeframe === '24H' && event?.changePercent24h != null) {
+      applyPercent(event.changePercent24h.toNumber());
+      applied = true;
+    }
+    if (!applied) {
       changePercent = firstPrice === 0 ? 0 : ((currentPrice - firstPrice) / firstPrice) * 100;
       changeAmount = currentPrice - firstPrice;
     }
 
-    const chartPoints = downsample(points, MAX_CHART_POINTS);
+    const chartPoints = downsample(points, MAX_CHART_POINTS).map((point) => ({
+      timestamp: point.timestamp.getTime(),
+      price: point.price,
+    }));
+    if (livePrice != null) {
+      const now = Date.now();
+      if (chartPoints.length === 0) chartPoints.push({ timestamp: now, price: livePrice });
+      else chartPoints[chartPoints.length - 1] = { timestamp: now, price: livePrice };
+    }
 
     res.json(
       serialize({
-        points: chartPoints.map((point) => ({ timestamp: point.timestamp.getTime(), price: point.price })),
+        points: chartPoints,
         currentPrice,
         changePercent,
         changeAmount,

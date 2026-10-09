@@ -22,4 +22,17 @@ export const changePasswordSchema = z
   })
   .strict();
 
+export const forgotPasswordSchema = z
+  .object({
+    identifier: z.string().trim().min(1).max(254),
+  })
+  .strict();
+
+export const resetPasswordSchema = z
+  .object({
+    token: z.string().trim().min(1).max(200),
+    newPassword: newPasswordSchema,
+  })
+  .strict();
+
 export type LoginInput = z.infer<typeof loginSchema>;

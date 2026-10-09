@@ -27,6 +27,9 @@ export interface Client {
   name: string;
   isActive: boolean;
   createdAt: string;
+  wallet: number;
+  winning: number;
+  loss: number;
 }
 
 export interface AdminUser {
@@ -41,6 +44,9 @@ export interface AdminUser {
   mustChangePassword: boolean;
   lastLoginAt: string | null;
   createdAt: string;
+  wallet: number;
+  winning: number;
+  loss: number;
 }
 
 export type FundRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
@@ -72,6 +78,9 @@ export interface BetSelectionLeg {
 export interface Bet {
   id: number;
   userId: number;
+  userName?: string;
+  userEmail?: string;
+  userMobile?: string;
   stake: number;
   combinedOdds: number;
   potentialReturn: number;

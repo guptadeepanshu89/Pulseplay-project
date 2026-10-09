@@ -25,6 +25,20 @@ function candidateClaims(req: AuthedRequest, apps: AppKind[]): TokenClaims[] {
     if (claim && apps.includes(claim.app)) claims.push(claim);
     return claims;
   }
+
+  // When both apps share a host (localhost), an admin cookie must win and must
+  // not fall through to a leftover mobile Player cookie on /auth/me.
+  const mixed = apps.includes('admin') && apps.includes('mobile');
+  if (mixed) {
+    const adminRaw = req.cookies?.[COOKIE_NAME.admin];
+    if (typeof adminRaw === 'string') {
+      const claim = verifyToken(adminRaw);
+      if (claim && claim.app === 'admin') return [claim];
+      // Admin cookie present but unusable — do not authenticate as mobile here.
+      return [];
+    }
+  }
+
   for (const app of apps) {
     const token = req.cookies?.[COOKIE_NAME[app]];
     if (typeof token !== 'string') continue;

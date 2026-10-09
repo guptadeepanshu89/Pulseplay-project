@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Dimensions, ScrollView, StyleSheet, View } from 'react-native';
 
 import { AppText, Header, IconButton, Screen, Skeleton, Touchable } from '@components/common';
@@ -25,6 +26,7 @@ const TIMEFRAMES: ChartTimeframe[] = ['24H', '1W', '1M', '1Y', 'ALL'];
 const CHART_HEIGHT = 180;
 const CHART_HORIZONTAL_PADDING = layout.screenPaddingHorizontal * 2;
 const DEFAULT_SYMBOL = 'BTC';
+const PRICE_REFRESH_MS = 10000;
 
 export function CryptoDetailScreen({ route, navigation }: Props) {
   const { eventId } = route.params;
@@ -44,13 +46,29 @@ export function CryptoDetailScreen({ route, navigation }: Props) {
 
   const symbol = event?.symbol ?? DEFAULT_SYMBOL;
 
-  useEffect(() => {
-    if (!event) return;
-    getCryptoPriceHistory(symbol, timeframe).then((history) => {
-      setPriceHistory(history);
-      setChartLoading(false);
-    });
-  }, [event, symbol, timeframe]);
+  useFocusEffect(
+    useCallback(() => {
+      if (!event) return undefined;
+      let active = true;
+      const load = () => {
+        getCryptoPriceHistory(symbol, timeframe)
+          .then((history) => {
+            if (!active) return;
+            setPriceHistory(history);
+            setChartLoading(false);
+          })
+          .catch(() => {
+            if (active) setChartLoading(false);
+          });
+      };
+      load();
+      const timer = setInterval(load, PRICE_REFRESH_MS);
+      return () => {
+        active = false;
+        clearInterval(timer);
+      };
+    }, [event, symbol, timeframe]),
+  );
 
   const handleSelectTimeframe = (next: ChartTimeframe) => {
     setTimeframe(next);

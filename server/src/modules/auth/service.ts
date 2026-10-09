@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import { createHash, randomBytes } from 'crypto';
 
 import { prisma } from '../../db';
 import { env } from '../../env';
@@ -8,6 +9,9 @@ import { hashPassword } from '../../core/password';
 import { passwordVersionOf, signToken } from '../../core/tokens';
 import { roleCodeOf } from '../../lib/roleCache';
 import { LoginInput } from './schemas';
+
+const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
+const hashResetToken = (token: string) => createHash('sha256').update(token).digest('hex');
 
 // Compared against when no user matches, so "no such user" and "wrong
 // password" cost the same and can't be told apart by response time.
@@ -65,7 +69,7 @@ export async function login({ identifier, password, app }: LoginInput, ip: strin
     throw new AppError(403, 'WRONG_APP', app === 'admin' ? 'Use the mobile app to sign in with this account' : 'Use the admin panel to sign in with this account');
   }
 
-  await prisma.user.update({ where: { id: user.id }, data: { lastLoginIp: ip, lastLoginAt: new Date() } });
+  await prisma.user.update({ where: { id: user.id }, data: { ipAddress: ip, lastLoginAt: new Date() } });
 
   const token = signToken({ userId: user.id, app, passwordVersion: passwordVersionOf(user.passwordChangedAt) });
   return { token, user: toUserDto(user) };
@@ -102,4 +106,70 @@ export async function changePassword(actor: Actor, currentPassword: string, newP
 
   // Every older token is now stale; hand back a fresh one so this session carries on.
   return signToken({ userId: actor.userId, app: actor.app, passwordVersion: passwordVersionOf(passwordChangedAt) });
+}
+
+// Always returns the same shape — never reveals whether an account exists.
+// No email/SMS provider is configured; the plaintext token is logged once for ops/dev delivery.
+export async function requestPasswordReset(identifier: string): Promise<{ ok: true }> {
+  const user = await prisma.user.findFirst({
+    where: {
+      isDeleted: 0,
+      isActive: 1,
+      OR: [{ email: identifier.toLowerCase() }, { mobile: identifier }],
+      Role: { code: 'CLIENT_USER' },
+    },
+    select: { id: true },
+  });
+
+  if (!user) return { ok: true };
+
+  const token = randomBytes(32).toString('hex');
+  const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS);
+
+  await prisma.$transaction([
+    prisma.passwordResetToken.updateMany({
+      where: { userId: user.id, usedAt: null },
+      data: { usedAt: new Date() },
+    }),
+    prisma.passwordResetToken.create({
+      data: { userId: user.id, tokenHash: hashResetToken(token), expiresAt },
+    }),
+  ]);
+
+  // Delivery provider not configured — surface the token in server logs only.
+  console.warn(
+    `[forgot-password] No email/SMS provider configured. Reset token for userId=${user.id} (expires ${expiresAt.toISOString()}): ${token}`,
+  );
+
+  return { ok: true };
+}
+
+export async function resetPasswordWithToken(token: string, newPassword: string): Promise<void> {
+  const tokenHash = hashResetToken(token);
+  const row = await prisma.passwordResetToken.findFirst({
+    where: { tokenHash, usedAt: null, expiresAt: { gt: new Date() } },
+    select: { id: true, userId: true },
+  });
+  if (!row) {
+    throw new AppError(400, 'INVALID_RESET_TOKEN', 'Reset token is invalid or has expired');
+  }
+
+  const passwordChangedAt = new Date();
+  const passwordHash = await hashPassword(newPassword);
+  await prisma.$transaction([
+    prisma.passwordResetToken.update({ where: { id: row.id }, data: { usedAt: passwordChangedAt } }),
+    prisma.passwordResetToken.updateMany({
+      where: { userId: row.userId, usedAt: null, id: { not: row.id } },
+      data: { usedAt: passwordChangedAt },
+    }),
+    prisma.user.update({
+      where: { id: row.userId },
+      data: {
+        passwordHash,
+        passwordChangedAt,
+        mustChangePassword: 0,
+        modifiedByUserId: row.userId,
+      },
+    }),
+  ]);
 }

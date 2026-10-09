@@ -2,12 +2,13 @@ import { prisma } from '../db';
 import { LOOKUP_IDS } from '../lib/lookupCache';
 
 const SYNC_INTERVAL_MS = 15 * 60 * 1000;
+const FETCH_TIMEOUT_MS = 15000;
 // TheSportsDB's public free test key — no signup required, documented on thesportsdb.com.
-const THESPORTSDB_TEST_KEY = '3';
-const FOOTBALL_LEAGUE_ID = '4328'; // English Premier League
+const THESPORTSDB_API_KEY = process.env.THESPORTSDB_API_KEY ?? '3';
+const FOOTBALL_LEAGUE_ID = process.env.THESPORTSDB_FOOTBALL_LEAGUE_ID ?? '4328'; // English Premier League
 // Big Bash League (4461) is TheSportsDB's other free cricket option but is out of season
 // (runs Dec-Jan) — CPL is in-season and reliably returns fixtures right now.
-const CRICKET_LEAGUE_ID = '5176'; // Caribbean Premier League
+const CRICKET_LEAGUE_ID = process.env.THESPORTSDB_CRICKET_LEAGUE_ID ?? '5176'; // Caribbean Premier League
 const FOOTBALL_LIVE_WINDOW_MS = 3 * 60 * 60 * 1000;
 const CRICKET_LIVE_WINDOW_MS = 8 * 60 * 60 * 1000;
 
@@ -30,10 +31,18 @@ function shortName(name: string): string {
 }
 
 async function fetchFixtures(leagueId: string): Promise<SportsDbFixture[]> {
-  const url = `https://www.thesportsdb.com/api/v1/json/${THESPORTSDB_TEST_KEY}/eventsnextleague.php?id=${leagueId}`;
-  const response = await fetch(url);
+  const url = `https://www.thesportsdb.com/api/v1/json/${THESPORTSDB_API_KEY}/eventsnextleague.php?id=${leagueId}`;
+  let response: Response;
+  try {
+    response = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.warn(`[fixturesSync] TheSportsDB unreachable for league ${leagueId} (${reason}) — keeping existing fixtures`);
+    return [];
+  }
   if (!response.ok) {
-    throw new Error(`TheSportsDB request failed: ${response.status}`);
+    console.warn(`[fixturesSync] TheSportsDB HTTP ${response.status} for league ${leagueId} — keeping existing fixtures`);
+    return [];
   }
   const data = (await response.json()) as { events: SportsDbFixture[] | null };
   return data.events ?? [];
@@ -133,7 +142,7 @@ export function startFixturesSync(): void {
     try {
       await tick();
     } catch (error) {
-      console.error('[fixturesSync] tick failed:', error);
+      console.warn('[fixturesSync] tick failed — keeping existing fixtures:', error);
     } finally {
       inFlight = false;
       setTimeout(run, SYNC_INTERVAL_MS);

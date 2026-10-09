@@ -12,7 +12,7 @@ const amountSchema = z
 export const createFundRequestSchema = z.strictObject({
   type: z.enum(['INCREASE', 'DECREASE']),
   amount: amountSchema,
-  reason: z.string().trim().min(1, 'Reason is required').max(500, 'Reason must be at most 500 characters'),
+  reason: z.string().trim().max(500, 'Reason must be at most 500 characters').default(''),
 });
 export type CreateFundRequestInput = z.infer<typeof createFundRequestSchema>;
 

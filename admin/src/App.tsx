@@ -13,6 +13,8 @@ import { DashboardPage } from './pages/DashboardPage';
 import { FundRequestsPage } from './pages/FundRequestsPage';
 import { LoginPage } from './pages/LoginPage';
 import { MarketsPage } from './pages/MarketsPage';
+import { NewClientPage } from './pages/NewClientPage';
+import { NewUserPage } from './pages/NewUserPage';
 import { UsersPage } from './pages/UsersPage';
 
 const queryClient = new QueryClient({
@@ -61,6 +63,14 @@ export default function App() {
                   }
                 />
                 <Route
+                  path="/users/new"
+                  element={
+                    <Shell>
+                      <NewUserPage />
+                    </Shell>
+                  }
+                />
+                <Route
                   path="/fund-requests"
                   element={
                     <Shell>
@@ -82,6 +92,16 @@ export default function App() {
                     <Shell>
                       <SuperAdminRoute>
                         <ClientsPage />
+                      </SuperAdminRoute>
+                    </Shell>
+                  }
+                />
+                <Route
+                  path="/clients/new"
+                  element={
+                    <Shell>
+                      <SuperAdminRoute>
+                        <NewClientPage />
                       </SuperAdminRoute>
                     </Shell>
                   }

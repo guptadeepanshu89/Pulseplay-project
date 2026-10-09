@@ -28,8 +28,8 @@ describe('CL-01 — SuperAdmin creates a Client + its first Client Admin', () =>
     expect(res.body.admin).toMatchObject({ email: 'nitin.admin@example.com' });
     expect(res.body.admin.temporaryPassword).toEqual(expect.any(String));
 
-    const admin = await prisma.user.findUniqueOrThrow({ where: { email: 'nitin.admin@example.com' }, include: { role: true } });
-    expect(admin.role.code).toBe('CLIENT_ADMIN');
+    const admin = await prisma.user.findUniqueOrThrow({ where: { email: 'nitin.admin@example.com' }, include: { Role: true } });
+    expect(admin.Role.code).toBe('CLIENT_ADMIN');
     expect(admin.clientId).toBe(res.body.client.id);
     expect(admin.mustChangePassword).toBe(1);
     expect(admin.createdByUserId).not.toBeNull();

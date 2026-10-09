@@ -19,7 +19,7 @@ import {
 } from '@components/common';
 import { EventCard, EVENT_CARD_HEIGHT } from '@components/market/EventCard';
 import { EventsMarketsLoadingSkeleton } from '@components/market/EventsMarketsLoadingSkeleton';
-import { MarketOddsCard, MARKET_ODDS_CAROUSEL_HEIGHT } from '@components/market/MarketOddsCard';
+import { MarketOddsCard } from '@components/market/MarketOddsCard';
 import { cardElevation, ColorPalette, radius, spacing } from '@theme';
 import { layout } from '@constants/layout';
 import { formatCurrency } from '@utils/formatCurrency';
@@ -178,7 +178,7 @@ export function HomeScreen() {
             </HorizontalCardRow>
 
             <SectionHeader title="Top Markets" onSeeAll={() => navigation.navigate('MainTabs', { screen: 'Markets' })} />
-            <HorizontalCardRow cardHeight={MARKET_ODDS_CAROUSEL_HEIGHT}>
+            <HorizontalCardRow>
               {topMarkets.map((market) => (
                 <MarketOddsCard
                   key={market.id}

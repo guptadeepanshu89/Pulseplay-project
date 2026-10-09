@@ -16,7 +16,7 @@ const login = (body: Record<string, unknown>) => api().post('/api/v1/auth/login'
 const setCookies = (res: { headers: Record<string, unknown> }) => (res.headers['set-cookie'] ?? []) as unknown as string[];
 
 // Exactly the fields a client may see about a user — anything else leaking
-// (passwordHash, isActive, roleId, clientId, lastLoginIp, ...) fails AUTH-18.
+// (passwordHash, isActive, roleId, clientId, ipAddress, ...) fails AUTH-18.
 const USER_DTO_KEYS = ['client', 'email', 'id', 'mobile', 'mustChangePassword', 'name', 'role', 'userCode'];
 
 afterEach(() => vi.restoreAllMocks());
@@ -391,13 +391,13 @@ describe('AUTH-19 — last-login bookkeeping', () => {
     for (const id of [player.id, blocked.id]) {
       const row = await prisma.user.findUniqueOrThrow({ where: { id } });
       expect(row.lastLoginAt, `user ${id}`).toBeNull();
-      expect(row.lastLoginIp, `user ${id}`).toBeNull();
+      expect(row.ipAddress, `user ${id}`).toBeNull();
     }
 
     await login({ identifier: player.email, password: DEFAULT_PASSWORD });
     const row = await prisma.user.findUniqueOrThrow({ where: { id: player.id } });
     expect(row.lastLoginAt).toBeInstanceOf(Date);
-    expect(row.lastLoginIp).toEqual(expect.any(String));
+    expect(row.ipAddress).toEqual(expect.any(String));
   });
 });
 

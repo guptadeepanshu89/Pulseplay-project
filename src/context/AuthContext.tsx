@@ -2,7 +2,7 @@ import { createContext, PropsWithChildren, useContext, useEffect, useMemo, useRe
 
 import { User } from '@/types/user';
 import { getMe, login as loginRequest, logout as logoutRequest } from '@/services/authService';
-import { setToken } from '@/api/client';
+import { ApiError, setToken } from '@/api/client';
 
 interface AuthState {
   isAuthenticated: boolean;
@@ -13,6 +13,7 @@ interface AuthState {
 type AuthAction =
   | { type: 'BOOT_COMPLETE'; user: User | null }
   | { type: 'LOGIN_SUCCESS'; user: User }
+  | { type: 'PASSWORD_CHANGED' }
   | { type: 'LOGOUT' };
 
 interface LoginResult {
@@ -23,6 +24,7 @@ interface LoginResult {
 interface AuthContextValue extends AuthState {
   login: (identifier: string, password: string) => Promise<LoginResult>;
   logout: () => Promise<void>;
+  markPasswordChanged: () => void;
 }
 
 const initialState: AuthState = {
@@ -31,12 +33,24 @@ const initialState: AuthState = {
   booting: true,
 };
 
+function withPasswordFlag(user: User): User {
+  return { ...user, mustChangePassword: Boolean(user.mustChangePassword) };
+}
+
 function authReducer(state: AuthState, action: AuthAction): AuthState {
   switch (action.type) {
     case 'BOOT_COMPLETE':
-      return { isAuthenticated: action.user !== null, user: action.user, booting: false };
+      return {
+        isAuthenticated: action.user !== null,
+        user: action.user ? withPasswordFlag(action.user) : null,
+        booting: false,
+      };
     case 'LOGIN_SUCCESS':
-      return { isAuthenticated: true, user: action.user, booting: false };
+      return { isAuthenticated: true, user: withPasswordFlag(action.user), booting: false };
+    case 'PASSWORD_CHANGED':
+      return state.user
+        ? { ...state, user: { ...state.user, mustChangePassword: false } }
+        : state;
     case 'LOGOUT':
       return { isAuthenticated: false, user: null, booting: false };
     default:
@@ -53,7 +67,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
     // Restore a persisted session (stored token) on app boot, if one exists and is still valid.
     getMe()
       .then((user) => dispatch({ type: 'BOOT_COMPLETE', user }))
-      .catch(() => dispatch({ type: 'BOOT_COMPLETE', user: null }));
+      .catch(async () => {
+        await setToken(null);
+        dispatch({ type: 'BOOT_COMPLETE', user: null });
+      });
   }, []);
 
   const value = useMemo<AuthContextValue>(
@@ -65,8 +82,22 @@ export function AuthProvider({ children }: PropsWithChildren) {
           await setToken(token);
           dispatch({ type: 'LOGIN_SUCCESS', user });
           return { success: true };
-        } catch {
-          return { success: false, error: 'Invalid email/mobile number or password.' };
+        } catch (error) {
+          if (error instanceof ApiError) {
+            switch (error.code) {
+              case 'ACCOUNT_BLOCKED':
+                return { success: false, error: 'This account has been blocked.' };
+              case 'CLIENT_INACTIVE':
+                return { success: false, error: 'This account is inactive.' };
+              case 'WRONG_APP':
+                return { success: false, error: 'Use the admin panel to sign in with this account.' };
+              case 'INVALID_CREDENTIALS':
+                return { success: false, error: 'Invalid email/mobile number or password.' };
+              default:
+                return { success: false, error: error.message || 'Something went wrong. Please try again.' };
+            }
+          }
+          return { success: false, error: 'Something went wrong. Please try again.' };
         }
       },
       logout: async () => {
@@ -76,6 +107,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         await setToken(null);
         dispatch({ type: 'LOGOUT' });
       },
+      markPasswordChanged: () => dispatch({ type: 'PASSWORD_CHANGED' }),
     }),
     [state],
   );

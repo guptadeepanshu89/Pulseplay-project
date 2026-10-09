@@ -8,7 +8,9 @@ import { roleCodeOf } from '../../lib/roleCache';
 export const userInclude = { client: { select: { id: true, code: true, name: true } } } satisfies Prisma.UserInclude;
 export type UserRow = Prisma.UserGetPayload<{ include: typeof userInclude }>;
 
-export function toAdminUserDto(user: UserRow) {
+export type UserStats = { wallet: number; winning: number; loss: number };
+
+export function toAdminUserDto(user: UserRow, stats: UserStats = { wallet: 0, winning: 0, loss: 0 }) {
   return {
     id: user.id,
     name: user.name,
@@ -21,5 +23,8 @@ export function toAdminUserDto(user: UserRow) {
     mustChangePassword: user.mustChangePassword === 1,
     lastLoginAt: user.lastLoginAt,
     createdAt: user.createdAt,
+    wallet: stats.wallet,
+    winning: stats.winning,
+    loss: stats.loss,
   };
 }

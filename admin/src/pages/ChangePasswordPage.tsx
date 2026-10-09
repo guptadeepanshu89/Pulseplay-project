@@ -1,11 +1,13 @@
 import { Alert, Button, Card, Form, Input, Typography } from 'antd';
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 import { changePassword } from '../api/auth';
 import { messageOf, useAuth } from '../context/AuthContext';
 
 export function ChangePasswordPage() {
   const { user, setUser } = useAuth();
+  const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm();
@@ -16,6 +18,7 @@ export function ChangePasswordPage() {
     try {
       await changePassword(values.currentPassword, values.newPassword);
       if (user) setUser({ ...user, mustChangePassword: false });
+      navigate('/', { replace: true });
     } catch (err) {
       setError(messageOf(err));
     } finally {
@@ -24,8 +27,8 @@ export function ChangePasswordPage() {
   };
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', paddingTop: user?.mustChangePassword ? 80 : 24 }}>
-      <Card style={{ width: 420 }} title="Change password">
+    <div style={{ display: 'flex', justifyContent: 'center', paddingTop: user?.mustChangePassword ? 80 : 8 }}>
+      <Card style={{ width: '100%', maxWidth: 440 }} bordered={false} title="Change password">
         {user?.mustChangePassword && (
           <Alert
             type="warning"

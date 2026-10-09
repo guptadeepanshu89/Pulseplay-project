@@ -14,8 +14,6 @@ interface OddsButtonProps {
   onPress: () => void;
 }
 
-const MIN_WIDTH = 76;
-
 export function OddsButton({ label, price, selected = false, disabled = false, onPress }: OddsButtonProps) {
   const { colors } = useTheme();
   return (
@@ -31,15 +29,21 @@ export function OddsButton({ label, price, selected = false, disabled = false, o
         },
       ]}
     >
-      <View>
+      <View style={styles.content}>
         <AppText
           variant="caption"
           color={selected ? colors.white : colors.textSecondary}
           numberOfLines={1}
+          align="center"
         >
           {label}
         </AppText>
-        <AppText variant="bodySemibold" color={selected ? colors.white : colors.textPrimary}>
+        <AppText
+          variant="bodySemibold"
+          color={selected ? colors.white : colors.textPrimary}
+          numberOfLines={1}
+          align="center"
+        >
           {formatOdds(price)}
         </AppText>
       </View>
@@ -49,11 +53,17 @@ export function OddsButton({ label, price, selected = false, disabled = false, o
 
 const styles = StyleSheet.create({
   base: {
-    minWidth: MIN_WIDTH,
+    flex: 1,
+    minWidth: 0,
     borderRadius: radius.md,
     borderWidth: 1,
     paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.xs,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  content: {
+    width: '100%',
     alignItems: 'center',
   },
 });

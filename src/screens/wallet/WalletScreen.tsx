@@ -1,4 +1,4 @@
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useCallback, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
@@ -19,7 +19,6 @@ import { cardElevation, ColorPalette, radius, spacing } from '@theme';
 import { layout } from '@constants/layout';
 import { ThemeScheme, useTheme } from '@context/ThemeContext';
 import { useWallet } from '@context/WalletContext';
-import { useLoadOnMount } from '@hooks/useLoadOnMount';
 import { getWalletRequests, getWalletTransactions } from '@services/walletService';
 import { WalletRequest, WalletTransaction } from '@/types/wallet';
 import { RootStackParamList } from '@navigation/types';
@@ -32,7 +31,7 @@ export function WalletScreen() {
   const navigation = useNavigation<Nav>();
   const { colors, scheme } = useTheme();
   const styles = createStyles(colors, scheme);
-  const { wallet } = useWallet();
+  const { wallet, refresh: refreshWallet } = useWallet();
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
   const [requests, setRequests] = useState<WalletRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,13 +40,19 @@ export function WalletScreen() {
     const [transactionsResult, requestsResult] = await Promise.all([
       getWalletTransactions(),
       getWalletRequests(),
+      refreshWallet(),
     ]);
     setTransactions(transactionsResult);
     setRequests(requestsResult);
     setLoading(false);
-  }, []);
+  }, [refreshWallet]);
 
-  useLoadOnMount(loadData);
+  // Refresh balance when returning to Wallet (e.g. after admin fund approval).
+  useFocusEffect(
+    useCallback(() => {
+      void loadData();
+    }, [loadData]),
+  );
 
   const pendingRequests = requests.filter((request) => request.status === 'PENDING');
 

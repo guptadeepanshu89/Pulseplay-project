@@ -9,10 +9,50 @@ import { prisma } from '../../db';
 import { LOOKUP_IDS } from '../../lib/lookupCache';
 import { ROLE_IDS } from '../../lib/roleCache';
 import { anonymisedAccount, conflictFromUniqueViolation, createAccount } from '../users/accounts';
-import { toClientDto } from './dto';
+import { ClientStats, toClientDto } from './dto';
 import { CreateClientInput, ListClientsQuery, UpdateClientInput } from './schemas';
 
 const codeConflict = () => new AppError(409, 'CODE_TAKEN', 'A client with this code already exists');
+
+// Per-client totals from existing Wallet / Bet rows (settlement: WON credits
+// potentialReturn, LOST keeps the stake). Used only to enrich list responses.
+async function statsByClientIds(clientIds: number[]): Promise<Map<number, ClientStats>> {
+  const stats = new Map(clientIds.map((id) => [id, { wallet: 0, winning: 0, loss: 0 }]));
+  if (clientIds.length === 0) return stats;
+
+  const [wallets, won, lost] = await Promise.all([
+    prisma.wallet.findMany({
+      where: { user: { clientId: { in: clientIds }, isDeleted: 0, roleId: ROLE_IDS.CLIENT_USER } },
+      select: { availableBalance: true, lockedBalance: true, user: { select: { clientId: true } } },
+    }),
+    prisma.bet.groupBy({
+      by: ['clientId'],
+      where: { clientId: { in: clientIds }, statusId: LOOKUP_IDS.BET_STATUS.WON },
+      _sum: { potentialReturn: true },
+    }),
+    prisma.bet.groupBy({
+      by: ['clientId'],
+      where: { clientId: { in: clientIds }, statusId: LOOKUP_IDS.BET_STATUS.LOST },
+      _sum: { stake: true },
+    }),
+  ]);
+
+  for (const row of wallets) {
+    const clientId = row.user.clientId;
+    if (clientId == null) continue;
+    const entry = stats.get(clientId);
+    if (entry) entry.wallet += row.availableBalance.toNumber() + row.lockedBalance.toNumber();
+  }
+  for (const row of won) {
+    const entry = stats.get(row.clientId);
+    if (entry) entry.winning = row._sum.potentialReturn?.toNumber() ?? 0;
+  }
+  for (const row of lost) {
+    const entry = stats.get(row.clientId);
+    if (entry) entry.loss = row._sum.stake?.toNumber() ?? 0;
+  }
+  return stats;
+}
 
 async function fetchClient(id: number) {
   const client = await prisma.client.findUnique({ where: { id } });
@@ -66,7 +106,12 @@ export async function listClients(actor: Actor, query: ListClientsQuery): Promis
     prisma.client.findMany({ where, orderBy: { [query.sort]: query.order }, ...skipTake(query) }),
     prisma.client.count({ where }),
   ]);
-  return pageOf(items.map(toClientDto), total, query);
+  const stats = await statsByClientIds(items.map((client) => client.id));
+  return pageOf(
+    items.map((client) => toClientDto(client, stats.get(client.id))),
+    total,
+    query,
+  );
 }
 
 export async function getClient(actor: Actor, id: number) {

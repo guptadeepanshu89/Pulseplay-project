@@ -17,6 +17,7 @@ export interface SettleResult {
   marketId: number;
   winningSelectionId: number;
   settledBets: unknown[];
+  pendingAccumulatorCount?: number;
 }
 
 export async function settleMarket(marketId: number, winningSelectionId: number): Promise<SettleResult> {

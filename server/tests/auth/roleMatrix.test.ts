@@ -21,6 +21,8 @@ const MATRIX: Record<string, Access> = {
   'GET /health': 'public',
   'POST /api/v1/auth/login': 'public',
   'POST /api/v1/auth/logout': 'public',
+  'POST /api/v1/auth/forgot-password': 'public',
+  'POST /api/v1/auth/reset-password': 'public',
   'GET /api/v1/auth/me': 'anyAuth',
   'POST /api/v1/auth/change-password': 'anyAuth',
 
@@ -30,6 +32,8 @@ const MATRIX: Record<string, Access> = {
   'GET /api/v1/markets': 'shared',
   'GET /api/v1/markets/:id': 'shared',
   'GET /api/v1/crypto/:symbol/price-history': 'shared',
+  'GET /api/v1/crypto/bybit': 'shared',
+  'GET /api/v1/crypto/bybit/:symbol': 'shared',
 
   'GET /api/v1/wallet': 'player',
   'GET /api/v1/wallet/transactions': 'player',

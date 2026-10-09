@@ -15,8 +15,8 @@ describe('CLI-01 — createSuperAdmin (the only way a SUPER_ADMIN is made)', () 
   it('creates a client-less SUPER_ADMIN who must change a generated password at first login', async () => {
     const { userId, email, password } = await createSuperAdmin(valid);
 
-    const row = await prisma.user.findUniqueOrThrow({ where: { id: userId }, include: { role: true } });
-    expect(row.role.code).toBe('SUPER_ADMIN');
+    const row = await prisma.user.findUniqueOrThrow({ where: { id: userId }, include: { Role: true } });
+    expect(row.Role.code).toBe('SUPER_ADMIN');
     expect(row.clientId).toBeNull();
     expect(row.mustChangePassword).toBe(1);
     expect(row.isActive).toBe(1);
@@ -109,8 +109,8 @@ describe('CLI-02 — `npm run create-superadmin`', () => {
     expect(password).toBeDefined();
     expect(newPasswordSchema.safeParse(password).success).toBe(true);
 
-    const row = await prisma.user.findUniqueOrThrow({ where: { email: 'cli.admin@example.com' }, include: { role: true } });
-    expect(row.role.code).toBe('SUPER_ADMIN');
+    const row = await prisma.user.findUniqueOrThrow({ where: { email: 'cli.admin@example.com' }, include: { Role: true } });
+    expect(row.Role.code).toBe('SUPER_ADMIN');
     expect(await bcrypt.compare(password!, row.passwordHash)).toBe(true);
   });
 

@@ -9,14 +9,13 @@ import { BetSlipProvider } from '@context/BetSlipContext';
 import { NotificationProvider } from '@context/NotificationContext';
 import { RootNavigator } from '@navigation/RootNavigator';
 
-// Wallet/BetSlip/Notification data only means anything once logged in, and each
-// fetches on mount — mounting them before auth resolves would fire an
-// unauthenticated request that's guaranteed to 401. Only mount them once
-// isAuthenticated is actually true.
+// Wallet/BetSlip/Notification fetch on mount — skip until the user is fully
+// allowed in (authenticated AND past mandatory password change). Otherwise a
+// temp-password session 403s those APIs and can disrupt the Change Password gate.
 function AuthenticatedProviders({ children }: PropsWithChildren) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
 
-  if (!isAuthenticated) {
+  if (!isAuthenticated || user?.mustChangePassword) {
     return <>{children}</>;
   }
 

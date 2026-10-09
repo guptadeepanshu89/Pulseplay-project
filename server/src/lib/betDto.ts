@@ -26,11 +26,19 @@ export async function fetchBetsWithSelections(prisma: PrismaClient, whereSql: Pr
   if (bets.length === 0) return [];
 
   const betIds = bets.map((bet) => bet.id);
-  const legs = await prisma.betSelectionLeg.findMany({ where: { betId: { in: betIds } } });
+  const userIds = [...new Set(bets.map((bet) => bet.userId))];
+  const [legs, users] = await Promise.all([
+    prisma.betSelectionLeg.findMany({ where: { betId: { in: betIds } } }),
+    prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true, email: true, mobile: true } }),
+  ]);
+  const userById = new Map(users.map((u) => [u.id, u]));
 
   return bets.map((bet) => ({
     id: bet.id,
     userId: bet.userId,
+    userName: userById.get(bet.userId)?.name ?? `User #${bet.userId}`,
+    userEmail: userById.get(bet.userId)?.email,
+    userMobile: userById.get(bet.userId)?.mobile,
     stake: bet.stake,
     combinedOdds: bet.combinedOdds,
     potentialReturn: bet.potentialReturn,

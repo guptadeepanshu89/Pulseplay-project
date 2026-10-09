@@ -534,8 +534,7 @@ async function main() {
 
   console.log(`Seed complete. Player login: ${user.email} / ${DEMO_PASSWORD}`);
   console.log(`Admin logins (password ${DEMO_ADMIN_PASSWORD}): ${SUPER_ADMIN_EMAIL} (SUPER_ADMIN), client.admin@example.com (CLIENT_ADMIN)`);
-  console.log('Note: the 2-leg accumulator bet is intentionally left OPEN forever by');
-  console.log('POST /admin/markets/:id/settle, which only settles single-selection bets in this pass.');
+  console.log('Note: the seed 2-leg accumulator stays OPEN until both of its markets are settled.');
 }
 
 main()

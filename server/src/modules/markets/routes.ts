@@ -27,10 +27,20 @@ router.post(
       return;
     }
 
+    const winningSelection = await prisma.marketSelection.findUnique({ where: { id: winningSelectionId } });
+    if (!winningSelection || winningSelection.marketId !== marketId) {
+      res.status(404).json({ error: 'Selection not found on this market', code: 'SELECTION_NOT_FOUND' });
+      return;
+    }
+
     // Idempotency guard: only one caller can transition this market out of OPEN.
     const claim = await prisma.market.updateMany({
       where: { id: marketId, statusId: LOOKUP_IDS.MARKET_STATUS.OPEN },
-      data: { statusId: LOOKUP_IDS.MARKET_STATUS.SETTLED, modifiedByUserId: actorOf(req).userId },
+      data: {
+        statusId: LOOKUP_IDS.MARKET_STATUS.SETTLED,
+        winningSelectionId,
+        modifiedByUserId: actorOf(req).userId,
+      },
     });
     if (claim.count !== 1) {
       res.status(409).json({ error: 'Market is not open (already settled or does not exist)', code: 'NOT_OPEN' });
@@ -42,19 +52,67 @@ router.post(
       data: { statusId: LOOKUP_IDS.MARKET_STATUS.SETTLED, modifiedByUserId: actorOf(req).userId },
     });
 
-    // Scoped to single-selection bets only for this pass — multi-leg accumulators
-    // are intentionally left OPEN (see server/src/seed.ts for the documented cut).
+    // All OPEN bets that include this market — single-leg and multi-leg.
     const bets = await prisma.bet.findMany({
-      where: { statusId: LOOKUP_IDS.BET_STATUS.OPEN, legCount: 1, selections: { some: { marketId } } },
+      where: { statusId: LOOKUP_IDS.BET_STATUS.OPEN, selections: { some: { marketId } } },
       include: { selections: true },
     });
 
-    const settledBetIds: number[] = [];
-    for (const bet of bets) {
-      const leg = bet.selections[0];
-      const won = leg.selectionId === winningSelectionId;
+    const otherMarketIds = [
+      ...new Set(bets.flatMap((bet) => bet.selections.map((leg) => leg.marketId)).filter((id) => id !== marketId)),
+    ];
+    const otherMarkets =
+      otherMarketIds.length > 0
+        ? await prisma.market.findMany({
+            where: { id: { in: otherMarketIds } },
+            select: { id: true, statusId: true, winningSelectionId: true },
+          })
+        : [];
+    const marketById = new Map(otherMarkets.map((m) => [m.id, m]));
+    marketById.set(marketId, {
+      id: marketId,
+      statusId: LOOKUP_IDS.MARKET_STATUS.SETTLED,
+      winningSelectionId,
+    });
 
+    const settledBetIds: number[] = [];
+    let pendingAccumulatorCount = 0;
+
+    for (const bet of bets) {
+      let anyLost = false;
+      let anyPending = false;
+
+      for (const leg of bet.selections) {
+        const market = marketById.get(leg.marketId);
+        if (!market || market.statusId !== LOOKUP_IDS.MARKET_STATUS.SETTLED || market.winningSelectionId == null) {
+          anyPending = true;
+          continue;
+        }
+        if (leg.selectionId !== market.winningSelectionId) {
+          anyLost = true;
+        }
+      }
+
+      // Accumulator still waiting on other legs — leave OPEN, keep stake locked.
+      if (anyPending && !anyLost) {
+        pendingAccumulatorCount += 1;
+        continue;
+      }
+
+      const won = !anyLost;
+
+      let didSettle = false;
       await prisma.$transaction(async (tx) => {
+        // Prevent duplicate wallet credit if two settle calls race on the same bet.
+        const claimed = await tx.bet.updateMany({
+          where: { id: bet.id, statusId: LOOKUP_IDS.BET_STATUS.OPEN },
+          data: {
+            statusId: won ? LOOKUP_IDS.BET_STATUS.WON : LOOKUP_IDS.BET_STATUS.LOST,
+            settledAt: new Date(),
+          },
+        });
+        if (claimed.count !== 1) return;
+
         const wallet = await tx.wallet.findUniqueOrThrow({ where: { userId: bet.userId } });
         const stake = bet.stake.toNumber();
         const creditAmount = won ? bet.potentialReturn.toNumber() : 0;
@@ -94,11 +152,6 @@ router.post(
           },
         });
 
-        await tx.bet.update({
-          where: { id: bet.id },
-          data: { statusId: won ? LOOKUP_IDS.BET_STATUS.WON : LOOKUP_IDS.BET_STATUS.LOST, settledAt: new Date() },
-        });
-
         await tx.notification.create({
           data: {
             userId: bet.userId,
@@ -110,15 +163,16 @@ router.post(
             read: false,
           },
         });
-      });
 
-      settledBetIds.push(bet.id);
+        didSettle = true;
+      });
+      if (didSettle) settledBetIds.push(bet.id);
     }
 
     const settledBets =
       settledBetIds.length > 0 ? await fetchBetsWithSelections(prisma, Prisma.sql`WHERE b.id IN (${Prisma.join(settledBetIds)})`) : [];
 
-    res.json(serialize({ marketId, winningSelectionId, settledBets }));
+    res.json(serialize({ marketId, winningSelectionId, settledBets, pendingAccumulatorCount }));
   }),
 );
 

@@ -10,8 +10,46 @@ import { prisma } from '../../db';
 import { LOOKUP_IDS } from '../../lib/lookupCache';
 import { ROLE_IDS, roleCodeOf, RoleCode } from '../../lib/roleCache';
 import { anonymisedAccount, assertContactFree, assertNotLastAdmin, conflictFromUniqueViolation, createAccount } from './accounts';
-import { toAdminUserDto, userInclude, UserRow } from './dto';
+import { toAdminUserDto, UserStats, userInclude, UserRow } from './dto';
 import { CreateUserInput, ListUsersQuery, UpdateUserInput } from './schemas';
+
+// Per-user totals for the admin list (same basis as client rollups):
+// wallet = available + locked; winning = WON potentialReturn; loss = LOST stake.
+async function statsByUserIds(userIds: number[]): Promise<Map<number, UserStats>> {
+  const stats = new Map(userIds.map((id) => [id, { wallet: 0, winning: 0, loss: 0 }]));
+  if (userIds.length === 0) return stats;
+
+  const [wallets, won, lost] = await Promise.all([
+    prisma.wallet.findMany({
+      where: { userId: { in: userIds } },
+      select: { userId: true, availableBalance: true, lockedBalance: true },
+    }),
+    prisma.bet.groupBy({
+      by: ['userId'],
+      where: { userId: { in: userIds }, statusId: LOOKUP_IDS.BET_STATUS.WON },
+      _sum: { potentialReturn: true },
+    }),
+    prisma.bet.groupBy({
+      by: ['userId'],
+      where: { userId: { in: userIds }, statusId: LOOKUP_IDS.BET_STATUS.LOST },
+      _sum: { stake: true },
+    }),
+  ]);
+
+  for (const row of wallets) {
+    const entry = stats.get(row.userId);
+    if (entry) entry.wallet = row.availableBalance.toNumber() + row.lockedBalance.toNumber();
+  }
+  for (const row of won) {
+    const entry = stats.get(row.userId);
+    if (entry) entry.winning = row._sum.potentialReturn?.toNumber() ?? 0;
+  }
+  for (const row of lost) {
+    const entry = stats.get(row.userId);
+    if (entry) entry.loss = row._sum.stake?.toNumber() ?? 0;
+  }
+  return stats;
+}
 
 // The single tenant-safe way to load a target user: cross-tenant AND
 // wrong-role targets (a SuperAdmin row is never manageable here) come back
@@ -84,7 +122,12 @@ export async function listUsers(actor: Actor, query: ListUsersQuery): Promise<Pa
     prisma.user.findMany({ where, include: userInclude, orderBy: { [query.sort]: query.order }, ...skipTake(query) }),
     prisma.user.count({ where }),
   ]);
-  return pageOf(items.map(toAdminUserDto), total, query);
+  const stats = await statsByUserIds(items.map((u) => u.id));
+  return pageOf(
+    items.map((u) => toAdminUserDto(u, stats.get(u.id))),
+    total,
+    query,
+  );
 }
 
 export async function getUser(actor: Actor, id: number) {

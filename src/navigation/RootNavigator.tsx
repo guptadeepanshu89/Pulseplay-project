@@ -29,8 +29,9 @@ import { RootStackParamList } from './types';
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export function RootNavigator() {
-  const { isAuthenticated, booting } = useAuth();
+  const { isAuthenticated, booting, user } = useAuth();
   const { colors, scheme } = useTheme();
+  const mustChangePassword = Boolean(user?.mustChangePassword);
 
   if (booting) {
     return (
@@ -52,10 +53,21 @@ export function RootNavigator() {
     },
   };
 
+  // Remount the stack when auth/password-gate mode changes so a prior MainTabs
+  // session cannot stick around after a temp-password login.
+  const navigatorKey = !isAuthenticated ? 'guest' : mustChangePassword ? 'must-change-password' : 'app';
+
   return (
     <NavigationContainer theme={navigationTheme}>
-      <Stack.Navigator screenOptions={{ headerShown: false }}>
-        {isAuthenticated ? (
+      <Stack.Navigator key={navigatorKey} screenOptions={{ headerShown: false }}>
+        {!isAuthenticated ? (
+          <>
+            <Stack.Screen name="Login" component={LoginScreen} />
+            <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+          </>
+        ) : mustChangePassword ? (
+          <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
+        ) : (
           <>
             <Stack.Screen name="MainTabs" component={BottomTabNavigator} />
             <Stack.Screen name="MarketDetail" component={MarketDetailScreen} />
@@ -74,11 +86,6 @@ export function RootNavigator() {
             <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
             <Stack.Screen name="HelpSupport" component={HelpSupportScreen} />
             <Stack.Screen name="AboutUs" component={AboutUsScreen} />
-          </>
-        ) : (
-          <>
-            <Stack.Screen name="Login" component={LoginScreen} />
-            <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
           </>
         )}
       </Stack.Navigator>
