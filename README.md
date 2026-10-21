@@ -259,9 +259,29 @@ Path aliases (see `tsconfig.json`): `@/*`, `@theme`, `@components/*`, `@screens/
 
 ## Real-time updates
 
-The API hosts one Socket.IO server on the same HTTP server and port as Express, at path `/socket.io`. Connections send the existing mobile or admin JWT as `auth.token`. The handshake is rejected without a valid token. Each user is joined only to `user:{theirId}`. `subscribe:user` for any other id is refused. Wallet, bet, and notification events are emitted only to that user room, and only after the database transaction commits. Market odds use `market:{marketId}` after an authenticated client subscribes. Those rooms carry public odds, not wallet balances or personal data. Every `update` payload includes `type`, `entityId`, `timestamp`, and a process-local `seq`.
+The API hosts one Socket.IO server on the same HTTP server and port as Express, at path `/socket.io`. There is no second Socket.IO server and no legacy `src/api/socket.ts` / `useSocketEvent` layer — the mobile client uses `src/realtime/live.ts`.
 
-The mobile client reconnects with a 1 second delay, backing off to 10 seconds. The header shows Live, Reconnecting, or Offline. A reconnect resets the local sequence and refetches the current screen from the REST API, because the server does not replay missed events. If a later `seq` skips numbers, the client also refetches. While the socket is disconnected, a focused foreground screen polls about every 8 seconds. The poll stops on reconnect, backgrounding, or unmount. Duplicate and older `seq` values are ignored.
+Connections send the existing mobile or admin JWT as `auth.token` (or the matching httpOnly cookie). The handshake verifies the JWT and re-checks the user row: deleted, blocked, revoked password version, and inactive client are rejected the same way as REST. Each user is joined only to `user:{theirId}`. `subscribe:user` for any other id is refused. `subscribe:market` joins only when the market id exists and is not soft-deleted. Markets are platform-wide (no `clientId`); bets and wallets stay tenant-scoped through REST and `user:` rooms.
+
+Event names on the wire (do not rename without updating clients and tests):
+
+| Type | Room | Meaning |
+|------|------|---------|
+| `odds.updated` | `market:{id}` | Selection prices (sports ticker marks `synthetic: true`) |
+| `wallet.updated` / `wallet.rejected` | `user:{id}` | Notification to refetch wallet via REST |
+| `bet.placed` / `bet.settled` | `user:{id}` | Notification to refetch bets via REST |
+| `notification.created` | `user:{id}` | Refresh notifications |
+| `events.updated` | broadcast | Live event list hint |
+| `crypto.updated` / `cricket.updated` | broadcast | Verified provider spot/score |
+| `demo.updated` | `user:{id}` | In-memory demo only |
+
+Wallet and settlement payloads are never treated as authoritative balances. Socket events only trigger REST refreshes. Emits run only after the related database transaction commits.
+
+Every `update` payload includes `type`, `entityId`, `timestamp`, process-local `seq`, and `instanceId`. `seq` is not globally ordered across API processes. Snapshots restore current state; missed events are not replayed. A changed `instanceId` (process restart) or a sequence gap triggers a client resync.
+
+The mobile client reconnects with a 1 second delay, backing off to 10 seconds. Logout calls `disconnectLive()`; login opens a new authenticated socket. The header shows Live, Reconnecting, or Offline. While the socket is disconnected, a focused foreground screen polls about every 8 seconds. Duplicate and older `seq` values are ignored.
+
+Production must set `SOCKET_CORS_ORIGINS` to an explicit comma-separated allowlist. If it is unset while `NODE_ENV=production`, browser Socket.IO CORS is denied.
 
 `GET /health` and `GET /health/live` only prove the process is up. Point liveness probes there. `GET /health/ready` runs `SELECT 1` and returns 503 when the database is down. Worker and provider staleness is included in that body but does not by itself fail readiness, so a quiet cricket or crypto feed does not restart the API. `GET /metrics` returns plain counters. None of these responses include secrets. Restrict `/health/ready` and `/metrics` at the reverse proxy if the host is public. No external alerting vendor is configured.
 
