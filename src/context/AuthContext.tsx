@@ -4,6 +4,7 @@ import { User } from '@/types/user';
 import { getMe, login as loginRequest, logout as logoutRequest } from '@/services/authService';
 import { ApiError, setToken } from '@/api/client';
 import { readableErrorMessage } from '@/api/errorMessage';
+import { disconnectLive, reconnectLive } from '@/realtime/live';
 
 interface AuthState {
   isAuthenticated: boolean;
@@ -82,6 +83,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
           const { token, user } = await loginRequest(identifier, password);
           await setToken(token);
           dispatch({ type: 'LOGIN_SUCCESS', user });
+          void reconnectLive();
           return { success: true };
         } catch (error) {
           if (error instanceof ApiError) {
@@ -109,6 +111,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         // local state so the user isn't stuck looking logged in.
         await logoutRequest().catch(() => undefined);
         await setToken(null);
+        disconnectLive();
         dispatch({ type: 'LOGOUT' });
       },
       markPasswordChanged: () => dispatch({ type: 'PASSWORD_CHANGED' }),

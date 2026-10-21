@@ -18,6 +18,9 @@ const http = { requests: 0, errors: 0, totalMs: 0 };
 
 let workersEnabled = true;
 let seq = 0;
+// Process-local only. A restart resets seq; clients must refetch REST snapshots.
+// Multi-instance deployments need a Redis adapter before sharing rooms or sequences.
+const instanceId = `pid-${process.pid}-${Date.now().toString(36)}`;
 
 const STALE_MS: Record<string, number> = {
   sportsTicker: positiveEnv('SPORTS_TICKER_STALE_MS', 30_000),
@@ -43,6 +46,10 @@ export function stopWorkers(): void {
 export function nextRealtimeSeq(): number {
   seq += 1;
   return seq;
+}
+
+export function realtimeInstanceId(): string {
+  return instanceId;
 }
 
 export function noteWorker(name: string, result: 'ok' | 'error', error?: unknown, at = new Date()): void {
@@ -107,11 +114,18 @@ export function processSnapshot(): { uptimeSeconds: number; rssMb: number; heapU
   };
 }
 
-export function socketCorsOrigin(): true | string[] {
+export function socketCorsOrigin(): true | string[] | false {
   const raw = process.env.SOCKET_CORS_ORIGINS?.trim();
-  if (!raw) return true;
-  const origins = raw.split(',').map((origin) => origin.trim()).filter(Boolean);
-  return origins.length > 0 ? origins : true;
+  if (raw) {
+    const origins = raw.split(',').map((origin) => origin.trim()).filter(Boolean);
+    if (origins.length > 0) return origins;
+  }
+  // Production must set an explicit browser allowlist. Dev keeps open CORS for Expo/Vite.
+  if (process.env.NODE_ENV === 'production') {
+    console.warn('[realtime] SOCKET_CORS_ORIGINS is unset in production; browser Socket.IO origins are denied.');
+    return false;
+  }
+  return true;
 }
 
 export function socketAdapterMode(): 'memory' {

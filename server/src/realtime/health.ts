@@ -1,5 +1,5 @@
 import { prisma } from '../db';
-import { processSnapshot, providerSnapshot, workerSnapshot, type WorkerBeat } from './runtime';
+import { processSnapshot, providerSnapshot, socketAdapterMode, workerSnapshot, type WorkerBeat } from './runtime';
 
 export interface ReadinessBody {
   ok: boolean;
@@ -30,7 +30,7 @@ export async function buildReadiness(input: {
     ok: databaseOk,
     role: 'ready',
     database: { ok: databaseOk, latencyMs: databaseOk ? Date.now() - started : null },
-    socket: { attached: input.attached, connections: input.connections, adapter: 'memory' },
+    socket: { attached: input.attached, connections: input.connections, adapter: socketAdapterMode() },
     workers,
     providers: providerSnapshot(input.now),
     process: processSnapshot(),

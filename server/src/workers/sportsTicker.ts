@@ -56,11 +56,12 @@ export async function runSportsTick(): Promise<void> {
         });
         updated.push({ id: row.id, currentPrice: row.currentPrice.toNumber(), priceVersion: row.priceVersion });
       }
-      emitMarket(market.id, 'odds.updated', { selections: updated });
+      // Synthetic display jitter for demo/live UI only. Settlement never reads these ticks.
+      emitMarket(market.id, 'odds.updated', { selections: updated, synthetic: true, settlesBets: false });
     }
   }
 
-  if (scoresChanged) emitAll('events.updated', 0);
+  if (scoresChanged) emitAll('events.updated', 0, { synthetic: true, settlesBets: false });
 }
 
 export function startSportsTicker(): void {

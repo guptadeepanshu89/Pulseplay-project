@@ -14,18 +14,23 @@ export interface LiveEvent {
   entityId: number;
   timestamp?: string;
   seq?: number;
+  instanceId?: string;
   data?: {
     selections?: { id: number; currentPrice: number; priceVersion?: number }[];
     version?: number;
     price?: number;
     updatedAt?: string;
     demo?: boolean;
+    synthetic?: boolean;
+    settlesBets?: boolean;
     symbol?: string;
     provider?: string;
     asOf?: string;
     matchId?: string;
     status?: string;
     score?: string;
+    adapter?: string;
+    instanceId?: string;
   };
 }
 
@@ -51,7 +56,7 @@ type Handler = (event: LiveEvent) => void;
 
 let socket: Socket | null = null;
 let connecting: Promise<Socket | null> | null = null;
-let sequence: SequenceState = { last: null };
+let sequence: SequenceState = { last: null, instanceId: null };
 let connectionState: ConnectionState = 'disconnected';
 const handlers = new Set<Handler>();
 const stateListeners = new Set<(state: ConnectionState) => void>();
@@ -63,6 +68,24 @@ function setConnectionState(next: ConnectionState): void {
 
 export function currentConnectionState(): ConnectionState {
   return connectionState;
+}
+
+/** Drop the singleton after logout so the next login opens a fresh authenticated socket. */
+export function disconnectLive(): void {
+  connecting = null;
+  sequence = { last: null, instanceId: null };
+  if (socket) {
+    socket.removeAllListeners();
+    socket.disconnect();
+    socket = null;
+  }
+  setConnectionState('disconnected');
+}
+
+/** Rebuild the socket with the current token (call after login). */
+export async function reconnectLive(): Promise<void> {
+  disconnectLive();
+  await ensureSocket();
 }
 
 async function ensureSocket(): Promise<Socket | null> {
@@ -89,7 +112,7 @@ async function ensureSocket(): Promise<Socket | null> {
       if (decision.action === 'resync') handlers.forEach((handler) => handler({ type: 'snapshot.required', entityId: 0 }));
     });
     next.on('connect', () => {
-      sequence = { last: null };
+      sequence = { last: null, instanceId: sequence.instanceId };
       setConnectionState('connected');
       handlers.forEach((handler) => handler({ type: 'socket.reconnected', entityId: 0 }));
     });
