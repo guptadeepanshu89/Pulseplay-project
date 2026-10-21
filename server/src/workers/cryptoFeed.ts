@@ -1,14 +1,19 @@
 import { prisma } from '../db';
 import { LOOKUP_IDS } from '../lib/lookupCache';
 import { getBybitTicker } from '../modules/crypto/bybit.service';
+import { emitAll } from '../realtime/hub';
+import { noteProvider, noteWorker, safeError, workersAcceptTicks } from '../realtime/runtime';
+
+// Crypto symbols are not numeric market ids. The shared socket envelope still
+// requires a number, so these stable ids identify the pair while `data.symbol`
+// carries the Bybit pair the client matches on.
+const CRYPTO_ENTITY_ID: Record<string, number> = { BTCUSDT: 1, ETHUSDT: 2, SOLUSDT: 3 };
 
 const TICK_INTERVAL_MS = 30000;
 const FETCH_TIMEOUT_MS = 10000;
 const COINGECKO_URL =
   process.env.COINGECKO_API_URL ??
   'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd&include_24hr_change=true';
-const PRICE_JITTER_RATIO = 0.02;
-const MIN_ODDS_PRICE = 1.01;
 // PriceHistory is an append-only log fed every tick — without pruning it grows forever.
 // 30 days comfortably covers every chart timeframe the app offers (24H/1W/1M) with room
 // to spare; older rows aren't shown by any screen, so there's no reason to keep them.
@@ -23,8 +28,10 @@ const BYBIT_SYMBOLS: { symbol: string; bybit: string }[] = [
 
 interface SpotQuote {
   symbol: string;
+  marketSymbol: string;
   price: number;
   changePercent24h?: number;
+  provider: 'bybit' | 'coingecko';
 }
 
 async function quotesFromBybit(): Promise<SpotQuote[]> {
@@ -37,8 +44,10 @@ async function quotesFromBybit(): Promise<SpotQuote[]> {
       const changeRatio = Number(ticker.price24hPcnt);
       quotes.push({
         symbol: item.symbol,
+        marketSymbol: item.bybit,
         price,
         changePercent24h: Number.isFinite(changeRatio) ? changeRatio * 100 : undefined,
+        provider: 'bybit',
       });
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
@@ -68,60 +77,72 @@ async function quotesFromCoinGecko(missing: Set<string>): Promise<SpotQuote[]> {
     if (!missing.has(symbol)) continue;
     const price = data[coingeckoId]?.usd;
     if (typeof price !== 'number') continue;
-    quotes.push({ symbol, price, changePercent24h: data[coingeckoId]?.usd_24h_change });
+    if (!Number.isFinite(price) || price <= 0) continue;
+    quotes.push({
+      symbol,
+      marketSymbol: `${symbol}USDT`,
+      price,
+      changePercent24h: data[coingeckoId]?.usd_24h_change,
+      provider: 'coingecko',
+    });
   }
   return quotes;
 }
 
-function jitterOdds(current: number): number {
-  const delta = current * PRICE_JITTER_RATIO * (Math.random() * 2 - 1);
-  return Math.max(MIN_ODDS_PRICE, Number((current + delta).toFixed(2)));
-}
-
-async function tick(): Promise<void> {
+export async function runCryptoTick(): Promise<void> {
   const quotes = await quotesFromBybit();
   const have = new Set(quotes.map((quote) => quote.symbol));
   const missing = new Set(Object.values(SYMBOL_BY_COINGECKO_ID).filter((symbol) => !have.has(symbol)));
   quotes.push(...(await quotesFromCoinGecko(missing)));
-  if (quotes.length === 0) return;
+  if (quotes.length === 0) {
+    noteProvider('crypto', 'error', new Error('no verified quotes'));
+    return;
+  }
+  noteProvider('crypto', 'ok');
 
   const now = new Date();
 
-  for (const { symbol, price, changePercent24h } of quotes) {
+  for (const quote of quotes) {
+    const { symbol, price, changePercent24h } = quote;
 
     // CoinGecko's free tier refreshes noticeably slower than our 30s poll
     // interval, so most ticks return the exact same price as last time —
     // writing one anyway just bloats PriceHistory with duplicate rows that
     // add no information. Only append when the price actually moved.
     const lastPoint = await prisma.priceHistory.findFirst({ where: { symbol }, orderBy: { timestamp: 'desc' } });
-    if (!lastPoint || !lastPoint.price.equals(price)) {
+    const changed = !lastPoint || !lastPoint.price.equals(price);
+    if (changed) {
       await prisma.priceHistory.create({ data: { symbol, timestamp: now, price } });
+      publishCrypto(quote, now);
     }
 
+    // Spot quotes update the chart and the 24h change only. Betting odds are a
+    // separate price, and this tick must not reopen or rewrite a suspended,
+    // closed, or settled market.
     const event = await prisma.event.findFirst({
       where: { categoryId: LOOKUP_IDS.EVENT_CATEGORY.CRYPTO, symbol },
-      include: { markets: { where: { statusId: LOOKUP_IDS.MARKET_STATUS.OPEN }, include: { selections: true } } },
     });
-    if (!event) continue;
+    if (!event || typeof changePercent24h !== 'number') continue;
 
-    if (typeof changePercent24h === 'number') {
-      await prisma.event.update({ where: { id: event.id }, data: { changePercent24h } });
-    }
-
-    for (const market of event.markets) {
-      for (const selection of market.selections) {
-        await prisma.marketSelection.update({
-          where: { id: selection.id },
-          data: {
-            currentPrice: jitterOdds(selection.currentPrice.toNumber()),
-            priceVersion: { increment: 1 },
-          },
-        });
-      }
-    }
+    await prisma.event.update({ where: { id: event.id }, data: { changePercent24h } });
   }
 
   await prisma.priceHistory.deleteMany({ where: { timestamp: { lt: new Date(Date.now() - RETENTION_MS) } } });
+}
+
+function publishCrypto(quote: SpotQuote, asOf: Date): void {
+  const entityId = CRYPTO_ENTITY_ID[quote.marketSymbol];
+  if (!entityId || !Number.isFinite(quote.price) || quote.price <= 0) return;
+  try {
+    emitAll('crypto.updated', entityId, {
+      symbol: quote.marketSymbol,
+      price: quote.price,
+      provider: quote.provider,
+      asOf: asOf.toISOString(),
+    });
+  } catch (error) {
+    console.warn(`[cryptoFeed] socket emit skipped for ${quote.marketSymbol}: ${safeError(error)}`);
+  }
 }
 
 export function startCryptoFeed(): void {
@@ -131,12 +152,15 @@ export function startCryptoFeed(): void {
     if (inFlight) return;
     inFlight = true;
     try {
-      await tick();
+      await runCryptoTick();
+      noteWorker('cryptoFeed', 'ok');
     } catch (error) {
-      console.warn('[cryptoFeed] tick failed — keeping last cached prices:', error);
+      noteWorker('cryptoFeed', 'error', error);
+      noteProvider('crypto', 'error', error);
+      console.warn('[cryptoFeed] tick failed — keeping last cached prices:', safeError(error));
     } finally {
       inFlight = false;
-      setTimeout(run, TICK_INTERVAL_MS);
+      if (workersAcceptTicks()) setTimeout(run, TICK_INTERVAL_MS);
     }
   };
 

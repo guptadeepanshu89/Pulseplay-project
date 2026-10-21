@@ -58,7 +58,7 @@ const createStyles = (colors: ColorPalette) =>
       backgroundColor: colors.surfaceElevated,
       borderRadius: radius.md,
       borderWidth: 1,
-      borderColor: colors.border,
+      borderColor: colors.accent,
       paddingHorizontal: spacing.lg,
       height: 56,
       gap: spacing.sm,

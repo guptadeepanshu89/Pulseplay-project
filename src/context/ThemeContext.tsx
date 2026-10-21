@@ -17,7 +17,7 @@ const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
 
 export function ThemeProvider({ children }: PropsWithChildren) {
   const systemScheme = useColorScheme();
-  const [mode, setMode] = useState<ThemeMode>('system');
+  const [mode, setMode] = useState<ThemeMode>('dark');
 
   const scheme: ThemeScheme = mode === 'system' ? (systemScheme === 'light' ? 'light' : 'dark') : mode;
   const colors = scheme === 'light' ? lightColors : darkColors;

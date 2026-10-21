@@ -35,23 +35,16 @@ export function platformShadow({ color, offsetHeight, opacity, radius, elevation
   })!;
 }
 
-const CARD_SHADOW_OFFSET_HEIGHT = 4;
-const CARD_SHADOW_OPACITY = 0.06;
-const CARD_SHADOW_RADIUS = 12;
-const CARD_ELEVATION = 2;
+const CARD_SHADOW_OFFSET_HEIGHT = 8;
+const CARD_SHADOW_OPACITY = 0.28;
+const CARD_SHADOW_RADIUS = 18;
+const CARD_ELEVATION = 4;
 
-/**
- * Dark surfaces already read as elevated via lightness contrast against the
- * near-black background, so a drop shadow adds little there and is skipped.
- * Light surfaces are close in lightness to the page background, so a soft
- * shadow is what actually reads as "elevated" instead of just "outlined".
- */
 export function cardElevation(colors: ColorPalette, scheme: 'light' | 'dark'): ViewStyle {
-  if (scheme !== 'light') return {};
   return platformShadow({
-    color: colors.black,
-    offsetHeight: CARD_SHADOW_OFFSET_HEIGHT,
-    opacity: CARD_SHADOW_OPACITY,
+    color: scheme === 'dark' ? colors.accent : colors.black,
+    offsetHeight: scheme === 'dark' ? 0 : CARD_SHADOW_OFFSET_HEIGHT,
+    opacity: scheme === 'dark' ? 0.18 : CARD_SHADOW_OPACITY,
     radius: CARD_SHADOW_RADIUS,
     elevation: CARD_ELEVATION,
   });

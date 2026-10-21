@@ -23,8 +23,8 @@ export function OddsButton({ label, price, selected = false, disabled = false, o
       style={({ pressed }) => [
         styles.base,
         {
-          backgroundColor: selected ? colors.accent : colors.surfaceElevated,
-          borderColor: selected ? colors.accent : colors.border,
+          backgroundColor: selected ? colors.accent : colors.surface,
+          borderColor: selected ? colors.accent : colors.positive,
           opacity: disabled ? 0.4 : pressed ? 0.85 : 1,
         },
       ]}
@@ -40,7 +40,7 @@ export function OddsButton({ label, price, selected = false, disabled = false, o
         </AppText>
         <AppText
           variant="bodySemibold"
-          color={selected ? colors.white : colors.textPrimary}
+          color={selected ? colors.white : colors.positive}
           numberOfLines={1}
           align="center"
         >
@@ -57,7 +57,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
     borderRadius: radius.md,
     borderWidth: 1,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.md,
     paddingHorizontal: spacing.xs,
     alignItems: 'center',
     justifyContent: 'center',

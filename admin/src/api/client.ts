@@ -1,9 +1,8 @@
 import axios, { AxiosError } from 'axios';
 
-// The panel talks to the backend from a different port on the same host
-// (localhost:4000 vs the Vite dev server), which is cross-ORIGIN but same-SITE —
-// exactly what the httpOnly `pulseplay_admin_token` cookie (SameSite=Lax) needs
-// to keep working (see server/README.md, "Session storage / token security").
+// Relative /api/v1 hits the Vite dev server, which proxies to the backend.
+// The panel and the API stay on one host, which is what the httpOnly
+// pulseplay_admin_token cookie (SameSite=Lax) needs — including through a tunnel.
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:4000/api/v1';
 
 export const http = axios.create({ baseURL: API_BASE_URL, withCredentials: true });

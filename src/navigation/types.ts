@@ -15,6 +15,7 @@ export type RootStackParamList = {
   MarketDetail: { marketId: number };
   CryptoDetail: { eventId: number };
   Football: undefined;
+  CricketFeed: undefined;
   Election: undefined;
   LiveMatch: { eventId: number };
   BetSlip: undefined;
@@ -28,6 +29,7 @@ export type RootStackParamList = {
   ChangePassword: undefined;
   HelpSupport: undefined;
   AboutUs: undefined;
+  DemoLive: undefined;
 };
 
 declare global {

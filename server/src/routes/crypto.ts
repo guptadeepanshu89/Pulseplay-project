@@ -79,6 +79,8 @@ router.get(
 
     let currentPrice = points.length > 0 ? points[points.length - 1].price.toNumber() : 0;
     const firstPrice = points.length > 0 ? points[0].price.toNumber() : currentPrice;
+    let asOf = points.length > 0 ? points[points.length - 1].timestamp.getTime() : null;
+    let stale = true;
     let livePrice: number | undefined;
 
     // For 24H, prefer CoinGecko's own 24h change — it reflects the real market
@@ -100,20 +102,24 @@ router.get(
     };
 
     let applied = false;
-    if (timeframe === '24H' && BYBIT_SYMBOL_BY_CHART[symbol]) {
+    if (BYBIT_SYMBOL_BY_CHART[symbol]) {
       try {
         const ticker = await getBybitTicker(BYBIT_SYMBOL_BY_CHART[symbol]);
         const live = Number(ticker.lastPrice);
-        if (Number.isFinite(live) && live > 0) {
-          currentPrice = live;
-          livePrice = live;
+        if (!Number.isFinite(live) || live <= 0) throw new Error('invalid price');
+        currentPrice = live;
+        livePrice = live;
+        asOf = Date.now();
+        stale = false;
+        if (timeframe === '24H') {
+          const ratio = Number(ticker.price24hPcnt);
+          if (Number.isFinite(ratio)) {
+            applyPercent(ratio * 100);
+            applied = true;
+          }
         }
-        const ratio = Number(ticker.price24hPcnt);
-        if (!Number.isFinite(ratio)) throw new Error('missing 24h change');
-        applyPercent(ratio * 100);
-        applied = true;
       } catch {
-        applied = false;
+        stale = true;
       }
     }
     if (!applied && timeframe === '24H' && event?.changePercent24h != null) {
@@ -127,7 +133,7 @@ router.get(
 
     const chartPoints = downsample(points, MAX_CHART_POINTS).map((point) => ({
       timestamp: point.timestamp.getTime(),
-      price: point.price,
+      price: Number(point.price),
     }));
     if (livePrice != null) {
       const now = Date.now();
@@ -141,6 +147,8 @@ router.get(
         currentPrice,
         changePercent,
         changeAmount,
+        stale,
+        asOf,
       }),
     );
   }),

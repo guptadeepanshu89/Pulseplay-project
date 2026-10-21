@@ -9,9 +9,10 @@ import { Touchable } from './Touchable';
 interface SectionHeaderProps {
   title: string;
   onSeeAll?: () => void;
+  actionLabel?: string;
 }
 
-export function SectionHeader({ title, onSeeAll }: SectionHeaderProps) {
+export function SectionHeader({ title, onSeeAll, actionLabel = 'See All' }: SectionHeaderProps) {
   const { colors } = useTheme();
   return (
     <View style={styles.container}>
@@ -19,7 +20,7 @@ export function SectionHeader({ title, onSeeAll }: SectionHeaderProps) {
       {onSeeAll && (
         <Touchable onPress={onSeeAll}>
           <AppText variant="captionMedium" color={colors.accent}>
-            See All
+            {actionLabel}
           </AppText>
         </Touchable>
       )}

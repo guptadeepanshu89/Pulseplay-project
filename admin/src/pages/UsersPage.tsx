@@ -164,6 +164,7 @@ export function UsersPage() {
           loading={isLoading}
           dataSource={data?.items}
           tableLayout="fixed"
+          scroll={{ x: 1040 }}
           style={{ width: '100%' }}
           pagination={{
             current: page,

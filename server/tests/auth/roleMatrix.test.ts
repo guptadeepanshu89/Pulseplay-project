@@ -19,6 +19,9 @@ type Access = 'public' | 'anyAuth' | 'shared' | 'player' | 'scopedAdmin' | 'supe
 
 const MATRIX: Record<string, Access> = {
   'GET /health': 'public',
+  'GET /health/live': 'public',
+  'GET /health/ready': 'public',
+  'GET /metrics': 'public',
   'POST /api/v1/auth/login': 'public',
   'POST /api/v1/auth/logout': 'public',
   'POST /api/v1/auth/forgot-password': 'public',
@@ -34,6 +37,16 @@ const MATRIX: Record<string, Access> = {
   'GET /api/v1/crypto/:symbol/price-history': 'shared',
   'GET /api/v1/crypto/bybit': 'shared',
   'GET /api/v1/crypto/bybit/:symbol': 'shared',
+
+  'GET /api/v1/cricket/live': 'shared',
+  'GET /api/v1/cricket/test/match': 'shared',
+  'POST /api/v1/cricket/test/next-ball': 'shared',
+  'POST /api/v1/cricket/test/reset': 'shared',
+  'GET /api/v1/cricket/:matchId/commentary': 'shared',
+  'GET /api/v1/cricket/:matchId/score': 'shared',
+  'GET /api/v1/cricket/:matchId/scorecard': 'shared',
+  'GET /api/v1/demo/snapshot': 'shared',
+  'POST /api/v1/demo/tick': 'shared',
 
   'GET /api/v1/wallet': 'player',
   'GET /api/v1/wallet/transactions': 'player',
@@ -68,6 +81,8 @@ const MATRIX: Record<string, Access> = {
   'POST /api/v1/admin/clients/:id/reactivate': 'superAdmin',
   'DELETE /api/v1/admin/clients/:id': 'superAdmin',
   'POST /api/v1/admin/markets/:id/settle': 'superAdmin',
+  'POST /api/v1/admin/markets/:id/suspend': 'superAdmin',
+  'POST /api/v1/admin/markets/:id/resume': 'superAdmin',
 };
 
 const concrete = (key: string) => {

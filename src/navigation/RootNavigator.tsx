@@ -9,6 +9,7 @@ import { ForgotPasswordScreen } from '@screens/auth/ForgotPasswordScreen';
 import { MarketDetailScreen } from '@screens/markets/MarketDetailScreen';
 import { CryptoDetailScreen } from '@screens/crypto/CryptoDetailScreen';
 import { FootballScreen } from '@screens/football/FootballScreen';
+import { CricketFeedScreen } from '@screens/cricket/CricketFeedScreen';
 import { ElectionScreen } from '@screens/election/ElectionScreen';
 import { LiveMatchScreen } from '@screens/live/LiveMatchScreen';
 import { BetSlipScreen } from '@screens/betslip/BetSlipScreen';
@@ -22,6 +23,7 @@ import { PersonalInfoScreen } from '@screens/profile/PersonalInfoScreen';
 import { ChangePasswordScreen } from '@screens/profile/ChangePasswordScreen';
 import { HelpSupportScreen } from '@screens/profile/HelpSupportScreen';
 import { AboutUsScreen } from '@screens/profile/AboutUsScreen';
+import { DemoLiveScreen } from '@screens/demo/DemoLiveScreen';
 
 import { BottomTabNavigator } from './BottomTabNavigator';
 import { RootStackParamList } from './types';
@@ -73,6 +75,7 @@ export function RootNavigator() {
             <Stack.Screen name="MarketDetail" component={MarketDetailScreen} />
             <Stack.Screen name="CryptoDetail" component={CryptoDetailScreen} />
             <Stack.Screen name="Football" component={FootballScreen} />
+            <Stack.Screen name="CricketFeed" component={CricketFeedScreen} />
             <Stack.Screen name="Election" component={ElectionScreen} />
             <Stack.Screen name="LiveMatch" component={LiveMatchScreen} />
             <Stack.Screen name="BetSlip" component={BetSlipScreen} options={{ presentation: 'modal' }} />
@@ -86,6 +89,7 @@ export function RootNavigator() {
             <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
             <Stack.Screen name="HelpSupport" component={HelpSupportScreen} />
             <Stack.Screen name="AboutUs" component={AboutUsScreen} />
+            <Stack.Screen name="DemoLive" component={DemoLiveScreen} />
           </>
         )}
       </Stack.Navigator>

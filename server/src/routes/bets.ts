@@ -11,6 +11,8 @@ import { parseId } from '../lib/parseId';
 import { asyncHandler } from '../lib/asyncHandler';
 import { LOOKUP_IDS } from '../lib/lookupCache';
 import { fetchBetsWithSelections } from '../lib/betDto';
+import { emitUser } from '../realtime/hub';
+import { lockMarketsForBet } from '../modules/markets/settlement';
 
 const router = Router();
 router.use(authenticate(['mobile']), requireRole('CLIENT_USER'));
@@ -45,9 +47,11 @@ router.post(
     try {
       const bet = await prisma.$transaction(async (tx) => {
         // Re-read every selection's live price server-side — never trust a client-submitted price.
+        const locked = await lockMarketsForBet(tx, selections.map((incoming) => incoming.marketId));
+        const lockedById = new Map(locked.map((row) => [row.id, row]));
         const liveSelections = await Promise.all(
           selections.map(async (incoming) => {
-            const market = await tx.market.findUnique({ where: { id: incoming.marketId } });
+            const market = lockedById.get(incoming.marketId) ?? (await tx.market.findUnique({ where: { id: incoming.marketId } }));
             if (!market) throw new SelectionNotFoundError(`Market ${incoming.marketId} not found`);
             if (market.statusId !== LOOKUP_IDS.MARKET_STATUS.OPEN) throw new MarketNotOpenError(`Market ${incoming.marketId} is not open`);
 
@@ -140,6 +144,9 @@ router.post(
       });
 
       const [betDto] = await fetchBetsWithSelections(prisma, Prisma.sql`WHERE b.id = ${bet.id}`);
+      emitUser(userId, 'bet.placed', bet.id);
+      emitUser(userId, 'wallet.updated', bet.id);
+      emitUser(userId, 'notification.created', bet.id);
       res.status(201).json(serialize(betDto));
     } catch (error) {
       if (error instanceof InsufficientFundsError) {

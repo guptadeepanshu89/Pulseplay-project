@@ -16,7 +16,7 @@ export async function getWalletRequests(): Promise<WalletRequest[]> {
 export async function createWalletRequest(
   type: WalletRequest['type'],
   amount: number,
-  reason = '',
+  reason: string,
 ): Promise<WalletRequest> {
   return apiRequest<WalletRequest>('/wallet/requests', {
     method: 'POST',

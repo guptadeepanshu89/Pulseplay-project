@@ -31,7 +31,7 @@ const SKELETON_COUNT = 4;
 export function NotificationsScreen({ navigation }: Props) {
   const { colors, scheme } = useTheme();
   const styles = createStyles(colors, scheme);
-  const { notifications, loading, refresh, markRead, markAllRead, unreadCount } = useNotifications();
+  const { notifications, loading, error, refresh, markRead, markAllRead, unreadCount } = useNotifications();
 
   return (
     <Screen>
@@ -42,7 +42,11 @@ export function NotificationsScreen({ navigation }: Props) {
           <SkeletonList count={SKELETON_COUNT} itemHeight={SKELETON_ROW_HEIGHT} />
         </View>
       ) : notifications.length === 0 ? (
-        <EmptyState icon="notifications-outline" title="No notifications" message="You're all caught up." />
+        <EmptyState
+          icon={error ? 'cloud-offline-outline' : 'notifications-outline'}
+          title={error ? "Can't reach the server" : 'No notifications'}
+          message={error ?? "You're all caught up."}
+        />
       ) : (
         <>
           {unreadCount > 0 && (

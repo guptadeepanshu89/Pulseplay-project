@@ -2,8 +2,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useState } from 'react';
-import { Dimensions, ScrollView, StyleSheet, View } from 'react-native';
+import { AppState, Dimensions, ScrollView, StyleSheet, View } from 'react-native';
 
+import { ApiError } from '@/api/client';
 import { AppText, Header, IconButton, Screen, Skeleton, Touchable } from '@components/common';
 import { MarketOddsCard } from '@components/market/MarketOddsCard';
 import { LineChart } from '@components/charts/LineChart';
@@ -13,9 +14,12 @@ import { useBetSlip } from '@context/BetSlipContext';
 import { useTheme } from '@context/ThemeContext';
 import { getEventById } from '@services/eventService';
 import { getMarketsByEventId } from '@services/marketService';
+import { currentConnectionState, useLiveRefresh } from '@/realtime/live';
+import { applyCryptoSpot, mergeCryptoHistory } from '@/realtime/providerUpdates';
 import { getCryptoPriceHistory } from '@services/cryptoService';
 import { ChartTimeframe, CryptoPriceHistory } from '@/types/crypto';
 import { formatUsd } from '@utils/formatCurrency';
+import { formatDateTime } from '@utils/formatDate';
 import { MarketEvent } from '@/types/event';
 import { Market } from '@/types/market';
 import { RootStackParamList } from '@navigation/types';
@@ -26,49 +30,78 @@ const TIMEFRAMES: ChartTimeframe[] = ['24H', '1W', '1M', '1Y', 'ALL'];
 const CHART_HEIGHT = 180;
 const CHART_HORIZONTAL_PADDING = layout.screenPaddingHorizontal * 2;
 const DEFAULT_SYMBOL = 'BTC';
-const PRICE_REFRESH_MS = 10000;
-
 export function CryptoDetailScreen({ route, navigation }: Props) {
   const { eventId } = route.params;
   const { colors } = useTheme();
   const { toggleSelection } = useBetSlip();
   const [event, setEvent] = useState<MarketEvent | null>(null);
   const [markets, setMarkets] = useState<Market[]>([]);
+  const [marketsLoading, setMarketsLoading] = useState(true);
+  const [marketsError, setMarketsError] = useState<string | null>(null);
   const [timeframe, setTimeframe] = useState<ChartTimeframe>('24H');
   const [watchlisted, setWatchlisted] = useState(false);
   const [priceHistory, setPriceHistory] = useState<CryptoPriceHistory | null>(null);
   const [chartLoading, setChartLoading] = useState(true);
 
-  useEffect(() => {
-    getEventById(eventId).then((result) => setEvent(result ?? null));
-    getMarketsByEventId(eventId).then(setMarkets);
+  const loadMarkets = useCallback(() => {
+    return getMarketsByEventId(eventId)
+      .then((next) => {
+        setMarkets(next);
+        setMarketsError(null);
+      })
+      .catch((error: unknown) => {
+        setMarketsError(error instanceof ApiError ? error.message : 'Could not load markets');
+      })
+      .finally(() => setMarketsLoading(false));
   }, [eventId]);
 
+  useEffect(() => {
+    getEventById(eventId).then((result) => setEvent(result ?? null));
+    void loadMarkets();
+  }, [eventId, loadMarkets]);
+
   const symbol = event?.symbol ?? DEFAULT_SYMBOL;
+  const marketIds = markets.map((market) => market.id);
+
+  const loadPrice = useCallback(() => {
+    if (!event) return;
+    getCryptoPriceHistory(symbol, timeframe)
+      .then((history) => {
+        setPriceHistory((current) => mergeCryptoHistory(current, history));
+        setChartLoading(false);
+      })
+      .catch(() => {
+        setChartLoading(false);
+        setPriceHistory((current) => (current ? { ...current, stale: true } : current));
+      });
+  }, [event, symbol, timeframe]);
+
 
   useFocusEffect(
     useCallback(() => {
       if (!event) return undefined;
-      let active = true;
-      const load = () => {
-        getCryptoPriceHistory(symbol, timeframe)
-          .then((history) => {
-            if (!active) return;
-            setPriceHistory(history);
-            setChartLoading(false);
-          })
-          .catch(() => {
-            if (active) setChartLoading(false);
-          });
-      };
-      load();
-      const timer = setInterval(load, PRICE_REFRESH_MS);
+      loadPrice();
+      const appSub = AppState.addEventListener('change', (state) => {
+        if (state === 'active') {
+          loadPrice();
+          loadMarkets();
+        }
+      });
       return () => {
-        active = false;
-        clearInterval(timer);
+        appSub.remove();
       };
-    }, [event, symbol, timeframe]),
+    }, [event, loadMarkets, loadPrice]),
   );
+
+  useLiveRefresh(() => {
+    if (currentConnectionState() === 'connected') return;
+    loadPrice();
+    loadMarkets();
+  }, marketIds, undefined, (event) => {
+    if (event.type !== 'crypto.updated') return false;
+    setPriceHistory((current) => applyCryptoSpot(current, event, symbol));
+    return true;
+  });
 
   const handleSelectTimeframe = (next: ChartTimeframe) => {
     setTimeframe(next);
@@ -82,11 +115,13 @@ export function CryptoDetailScreen({ route, navigation }: Props) {
   const latestPrice = priceHistory?.currentPrice ?? 0;
   const changePercent = priceHistory?.changePercent ?? 0;
   const isPositive = changePercent >= 0;
+  const hasPrice = latestPrice > 0 || (priceHistory?.points.length ?? 0) > 0;
+  const priceIsStale = priceHistory?.stale === true;
   const chartWidth = Dimensions.get('window').width - CHART_HORIZONTAL_PADDING;
 
   const handleSelect = (market: Market, selectionId: number) => {
     const selection = market.selections.find((item) => item.id === selectionId);
-    if (!selection || !event) return;
+    if (!selection || !event || market.status !== 'OPEN') return;
     toggleSelection({
       eventId: event.id,
       eventName: event.name,
@@ -121,10 +156,19 @@ export function CryptoDetailScreen({ route, navigation }: Props) {
             <Skeleton width="60%" height={40} style={styles.skeletonSpacing} />
             <Skeleton width="100%" height={CHART_HEIGHT} style={styles.skeletonSpacing} />
           </>
+        ) : !hasPrice ? (
+          <AppText variant="body" color={colors.textSecondary} style={styles.sectionTitle}>
+            Price unavailable
+          </AppText>
         ) : (
           <>
             <View style={styles.priceRow}>
               <AppText variant="display">{formatUsd(latestPrice)}</AppText>
+              {priceIsStale && (
+                <AppText variant="caption" color={colors.textMuted}>
+                  Price delayed — showing the last known value
+                </AppText>
+              )}
               <View
                 style={[styles.changeBadge, { backgroundColor: isPositive ? colors.positiveMuted : colors.negativeMuted }]}
               >
@@ -162,14 +206,31 @@ export function CryptoDetailScreen({ route, navigation }: Props) {
         <AppText variant="h3" style={styles.sectionTitle}>
           Market Predictions
         </AppText>
-        {markets.map((market) => (
-          <MarketOddsCard
-            key={market.id}
-            market={market}
-            fullWidth
-            onPressSelection={(selectionId) => handleSelect(market, selectionId)}
-          />
-        ))}
+        {marketsLoading ? (
+          <Skeleton width="100%" height={120} style={styles.skeletonSpacing} />
+        ) : marketsError ? (
+          <AppText variant="body" color={colors.negative} style={styles.sectionTitle}>
+            {marketsError}
+          </AppText>
+        ) : markets.length === 0 ? (
+          <AppText variant="body" color={colors.textSecondary} style={styles.sectionTitle}>
+            No active markets available.
+          </AppText>
+        ) : (
+          markets.map((market) => (
+            <View key={market.id}>
+              <AppText variant="caption" color={colors.textMuted} style={styles.marketMeta}>
+                {market.status}
+                {event?.startTime ? ` · ${formatDateTime(event.startTime)}` : ''}
+              </AppText>
+              <MarketOddsCard
+                market={market}
+                fullWidth
+                onPressSelection={(selectionId) => handleSelect(market, selectionId)}
+              />
+            </View>
+          ))
+        )}
       </ScrollView>
     </Screen>
   );
@@ -210,5 +271,8 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     marginBottom: spacing.md,
+  },
+  marketMeta: {
+    marginBottom: spacing.xs,
   },
 });

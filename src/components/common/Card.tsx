@@ -1,11 +1,11 @@
 import { PropsWithChildren } from 'react';
-import { StyleSheet, View, ViewStyle } from 'react-native';
+import { StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 
 import { cardElevation, ColorPalette, radius, spacing } from '@theme';
 import { ThemeScheme, useTheme } from '@context/ThemeContext';
 
 interface CardProps extends PropsWithChildren {
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
   padding?: keyof typeof PADDING_MAP;
 }
 

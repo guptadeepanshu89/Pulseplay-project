@@ -1,5 +1,7 @@
 import { prisma } from '../db';
 import { LOOKUP_IDS } from '../lib/lookupCache';
+import { nextEventStatus, type EventStatusCode } from './eventStatus';
+import { noteWorker, safeError, workersAcceptTicks } from '../realtime/runtime';
 
 const SYNC_INTERVAL_MS = 15 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 15000;
@@ -96,11 +98,19 @@ async function syncLeague(leagueId: string, category: 'FOOTBALL' | 'CRICKET'): P
     const kickoff = new Date(`${fixture.dateEvent}T${fixture.strTime}Z`);
     if (Number.isNaN(kickoff.getTime())) continue;
 
-    const now = Date.now();
-    const status = now >= kickoff.getTime() + liveWindowMs ? 'COMPLETED' : now >= kickoff.getTime() ? 'LIVE' : 'SCHEDULED';
+    const existing = await prisma.event.findUnique({
+      where: { externalId: fixture.idEvent },
+      include: { Lookup_Event_statusIdToLookup: true },
+    });
+    const current = (existing?.Lookup_Event_statusIdToLookup.code ?? null) as EventStatusCode | null;
+    const decision = nextEventStatus({ kickoffMs: kickoff.getTime(), nowMs: Date.now(), current });
+    if (Date.now() >= kickoff.getTime() + liveWindowMs && decision.status === 'LIVE') {
+      console.info(
+        `[fixturesSync] event ${fixture.idEvent} is past the live window without a provider finish signal — leaving it ${decision.status}`,
+      );
+    }
+    const status = decision.status;
     const statusId = LOOKUP_IDS.EVENT_STATUS[status];
-
-    const existing = await prisma.event.findUnique({ where: { externalId: fixture.idEvent } });
 
     if (!existing) {
       const created = await prisma.event.create({
@@ -141,11 +151,13 @@ export function startFixturesSync(): void {
     inFlight = true;
     try {
       await tick();
+      noteWorker('fixturesSync', 'ok');
     } catch (error) {
-      console.warn('[fixturesSync] tick failed — keeping existing fixtures:', error);
+      noteWorker('fixturesSync', 'error', error);
+      console.warn('[fixturesSync] tick failed — keeping existing fixtures:', safeError(error));
     } finally {
       inFlight = false;
-      setTimeout(run, SYNC_INTERVAL_MS);
+      if (workersAcceptTicks()) setTimeout(run, SYNC_INTERVAL_MS);
     }
   };
 

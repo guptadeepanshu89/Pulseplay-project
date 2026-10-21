@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { App, Button, Card, Collapse, Popconfirm, Radio, Space, Tag, Typography } from 'antd';
 import { useMemo, useState } from 'react';
 
-import { listEvents, listMarkets, settleMarket } from '../api/markets';
+import { listEvents, listMarkets, resumeMarket, settleMarket, suspendMarket } from '../api/markets';
 import { useHeaderExtras } from '../components/AppLayout';
 import { messageOf } from '../context/AuthContext';
 
@@ -33,8 +33,18 @@ export function MarketsPage() {
     onError: (err) => message.error(messageOf(err)),
   });
 
+  const statusMutation = useMutation({
+    mutationFn: ({ marketId, action }: { marketId: number; action: 'suspend' | 'resume' }) =>
+      action === 'suspend' ? suspendMarket(marketId) : resumeMarket(marketId),
+    onSuccess: (_result, variables) => {
+      message.success(variables.action === 'suspend' ? 'Market suspended — new bets are blocked' : 'Market resumed');
+      queryClient.invalidateQueries({ queryKey: ['markets'] });
+    },
+    onError: (err) => message.error(messageOf(err)),
+  });
+
   const eventNameOf = (eventId: number) => events?.find((e) => e.id === eventId)?.name ?? `Event #${eventId}`;
-  const openMarkets = (markets ?? []).filter((m) => m.status === 'OPEN');
+  const visibleMarkets = (markets ?? []).filter((m) => m.status === 'OPEN' || m.status === 'SUSPENDED');
 
   const headerExtras = useMemo(
     () => (
@@ -53,19 +63,21 @@ export function MarketsPage() {
       </Typography.Paragraph>
 
       <Card bordered={false}>
-        {!isLoading && openMarkets.length === 0 && <Typography.Text type="secondary">No open markets right now.</Typography.Text>}
+        {!isLoading && visibleMarkets.length === 0 && <Typography.Text type="secondary">No open markets right now.</Typography.Text>}
 
         <Collapse
-          items={openMarkets.map((market) => ({
+          items={visibleMarkets.map((market) => ({
             key: market.id,
             label: (
-              <Space>
+              <Space wrap className="pp-collapse-label">
                 <Tag color="purple">{eventNameOf(market.eventId)}</Tag>
                 <strong>{market.name}</strong>
+                <Tag color={market.status === 'OPEN' ? 'green' : 'gold'}>{market.status}</Tag>
               </Space>
             ),
             children: (
               <>
+                {market.status === 'OPEN' && (
                 <Radio.Group
                   value={selections[market.id]}
                   onChange={(e) => setSelections((prev) => ({ ...prev, [market.id]: e.target.value }))}
@@ -78,18 +90,46 @@ export function MarketsPage() {
                     ))}
                   </Space>
                 </Radio.Group>
-                <div style={{ marginTop: 16 }}>
-                  <Popconfirm
-                    title="Settle this market?"
-                    description="This cannot be undone."
-                    disabled={!selections[market.id]}
-                    onConfirm={() => settleMutation.mutate({ marketId: market.id, winningSelectionId: selections[market.id] })}
-                  >
-                    <Button type="primary" danger disabled={!selections[market.id]} loading={settleMutation.isPending}>
-                      Settle market
-                    </Button>
-                  </Popconfirm>
-                </div>
+                )}
+                {market.status === 'SUSPENDED' && (
+                  <Typography.Text type="secondary">Betting is paused. Resume the market before settling it.</Typography.Text>
+                )}
+                <Space wrap style={{ marginTop: 16 }}>
+                  {market.status === 'OPEN' && (
+                    <Popconfirm
+                      title="Settle this market?"
+                      description="This cannot be undone."
+                      disabled={!selections[market.id] || settleMutation.isPending}
+                      onConfirm={() => settleMutation.mutate({ marketId: market.id, winningSelectionId: selections[market.id] })}
+                    >
+                      <Button type="primary" danger disabled={!selections[market.id] || settleMutation.isPending} loading={settleMutation.isPending}>
+                        Settle market
+                      </Button>
+                    </Popconfirm>
+                  )}
+                  {market.status === 'OPEN' && (
+                    <Popconfirm
+                      title="Suspend betting on this market?"
+                      disabled={statusMutation.isPending}
+                      onConfirm={() => statusMutation.mutate({ marketId: market.id, action: 'suspend' })}
+                    >
+                      <Button disabled={statusMutation.isPending} loading={statusMutation.isPending && statusMutation.variables?.marketId === market.id}>
+                        Suspend
+                      </Button>
+                    </Popconfirm>
+                  )}
+                  {market.status === 'SUSPENDED' && (
+                    <Popconfirm
+                      title="Resume betting on this market?"
+                      disabled={statusMutation.isPending}
+                      onConfirm={() => statusMutation.mutate({ marketId: market.id, action: 'resume' })}
+                    >
+                      <Button type="primary" disabled={statusMutation.isPending} loading={statusMutation.isPending && statusMutation.variables?.marketId === market.id}>
+                        Resume
+                      </Button>
+                    </Popconfirm>
+                  )}
+                </Space>
               </>
             ),
           }))}

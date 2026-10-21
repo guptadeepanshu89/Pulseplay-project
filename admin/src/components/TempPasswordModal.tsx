@@ -40,7 +40,7 @@ export function TempPasswordModal({ open, title, identifierLabel, identifier, pa
       </Paragraph>
       <Paragraph>
         <Text type="secondary">Temporary password: </Text>
-        <Text strong code copyable={false} style={{ fontSize: 16 }}>
+        <Text strong code copyable={false} className="pp-temp-password">
           {password}
         </Text>
         <Button

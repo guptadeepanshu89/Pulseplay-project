@@ -75,6 +75,7 @@ export function ClientsPage() {
         loading={isLoading}
         dataSource={data?.items}
         tableLayout="fixed"
+        scroll={{ x: 980 }}
         style={{ width: '100%' }}
         onRow={(client) => ({
           onDoubleClick: () => navigate(`/users?clientId=${client.id}`),

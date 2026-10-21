@@ -1,13 +1,15 @@
 import {
   BankOutlined,
+  CloseOutlined,
   DashboardOutlined,
   LineChartOutlined,
   LogoutOutlined,
+  MenuOutlined,
   TeamOutlined,
   TrophyOutlined,
   WalletOutlined,
 } from '@ant-design/icons';
-import { Avatar, Dropdown, Layout, Menu, Space, Tag, theme } from 'antd';
+import { Avatar, Button, Dropdown, Grid, Layout, Menu, Space, Tag, theme } from 'antd';
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 
@@ -33,6 +35,13 @@ export function AppLayout({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [headerExtras, setHeaderExtras] = useState<ReactNode | null>(null);
+  const [navOpen, setNavOpen] = useState(false);
+  const screens = Grid.useBreakpoint();
+  const isMobile = screens.lg === false;
+
+  useEffect(() => {
+    setNavOpen(false);
+  }, [location.pathname, isMobile]);
   const {
     token: { colorBgContainer, boxShadowTertiary },
   } = theme.useToken();
@@ -76,7 +85,17 @@ export function AppLayout({ children }: { children: ReactNode }) {
   return (
     <HeaderExtrasContext.Provider value={setHeaderExtras}>
       <Layout className="pp-app-shell">
-        <Sider className="pp-app-sider" breakpoint="lg" collapsedWidth={0} width={232}>
+        {isMobile && navOpen && (
+          <button type="button" className="pp-sider-mask" aria-label="Close menu" onClick={() => setNavOpen(false)} />
+        )}
+        <Sider
+          className="pp-app-sider"
+          width={232}
+          collapsedWidth={0}
+          collapsed={isMobile && !navOpen}
+          trigger={null}
+          collapsible
+        >
           <div className="pp-sider-brand">PulsePlay Admin</div>
           <Menu theme="dark" mode="inline" selectedKeys={[selectedKey]} items={items} style={{ borderInlineEnd: 0, marginTop: 8 }} />
         </Sider>
@@ -85,7 +104,6 @@ export function AppLayout({ children }: { children: ReactNode }) {
             className="pp-app-header"
             style={{
               background: colorBgContainer,
-              padding: '10px 28px',
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
@@ -98,15 +116,26 @@ export function AppLayout({ children }: { children: ReactNode }) {
               lineHeight: 'normal',
             }}
           >
-            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>
+            <div className="pp-header-tools">
+              {isMobile && (
+                <Button
+                  className="pp-nav-toggle"
+                  type="text"
+                  aria-label={navOpen ? 'Close menu' : 'Open menu'}
+                  icon={navOpen ? <CloseOutlined /> : <MenuOutlined />}
+                  onClick={() => setNavOpen((open) => !open)}
+                />
+              )}
               {headerExtras}
             </div>
             <Dropdown menu={userMenu} placement="bottomRight">
-              <Space size={10} style={{ cursor: 'pointer', flexShrink: 0 }}>
+              <Space className="pp-user-chip" size={10}>
                 <Avatar style={{ background: '#5b21b6' }}>{user?.name.slice(0, 1).toUpperCase()}</Avatar>
-                <span style={{ fontWeight: 600 }}>{user?.name}</span>
-                <Tag color={user?.role === 'SUPER_ADMIN' ? 'gold' : 'purple'}>{user ? roleLabel[user.role] : ''}</Tag>
-                {user?.client && <Tag>{user.client.name}</Tag>}
+                <span className="pp-user-label">{user?.name}</span>
+                <span className="pp-user-tags">
+                  <Tag color={user?.role === 'SUPER_ADMIN' ? 'gold' : 'purple'}>{user ? roleLabel[user.role] : ''}</Tag>
+                  {user?.client && <Tag>{user.client.name}</Tag>}
+                </span>
               </Space>
             </Dropdown>
           </Header>

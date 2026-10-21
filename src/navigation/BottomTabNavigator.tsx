@@ -49,6 +49,7 @@ export function BottomTabNavigator() {
         tabBarStyle: {
           backgroundColor: colors.surface,
           borderTopColor: colors.border,
+          borderTopWidth: 1,
           height: layout.tabBarHeight,
         },
         tabBarIcon: ({ color, size }) => (

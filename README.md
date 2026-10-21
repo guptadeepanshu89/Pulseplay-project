@@ -257,6 +257,58 @@ admin/                    # React admin panel (Vite + TS + Ant Design + TanStack
 
 Path aliases (see `tsconfig.json`): `@/*`, `@theme`, `@components/*`, `@screens/*`, `@navigation/*`, `@context/*`, `@constants/*`, `@types/*`, `@services/*`, `@hooks/*`, `@utils/*`.
 
+## Real-time updates
+
+The API hosts one Socket.IO server on the same HTTP server and port as Express, at path `/socket.io`. Connections send the existing mobile or admin JWT as `auth.token`. The handshake is rejected without a valid token. Each user is joined only to `user:{theirId}`. `subscribe:user` for any other id is refused. Wallet, bet, and notification events are emitted only to that user room, and only after the database transaction commits. Market odds use `market:{marketId}` after an authenticated client subscribes. Those rooms carry public odds, not wallet balances or personal data. Every `update` payload includes `type`, `entityId`, `timestamp`, and a process-local `seq`.
+
+The mobile client reconnects with a 1 second delay, backing off to 10 seconds. The header shows Live, Reconnecting, or Offline. A reconnect resets the local sequence and refetches the current screen from the REST API, because the server does not replay missed events. If a later `seq` skips numbers, the client also refetches. While the socket is disconnected, a focused foreground screen polls about every 8 seconds. The poll stops on reconnect, backgrounding, or unmount. Duplicate and older `seq` values are ignored.
+
+`GET /health` and `GET /health/live` only prove the process is up. Point liveness probes there. `GET /health/ready` runs `SELECT 1` and returns 503 when the database is down. Worker and provider staleness is included in that body but does not by itself fail readiness, so a quiet cricket or crypto feed does not restart the API. `GET /metrics` returns plain counters. None of these responses include secrets. Restrict `/health/ready` and `/metrics` at the reverse proxy if the host is public. No external alerting vendor is configured.
+
+One process is the supported deployment. `SOCKET_REDIS_URL` is not enough to scale out: the Redis adapter is not installed, and a set value is logged and ignored. Sticky sessions and a Redis adapter would be required before running more than one API instance. `SIGTERM` and `SIGINT` stop worker scheduling, close Socket.IO, and close the HTTP server.
+
+The sports ticker still jitters stored football and cricket display scores and open selection prices. That data is synthetic. CricketData responses are the only cricket provider feed, and they are not used to settle bets. Crypto price history is written only from a verified Bybit or CoinGecko quote. Settlement is unchanged and does not run from a socket handler.
+
+`GET /api/v1/demo/snapshot` and `POST /api/v1/demo/tick` are authenticated and in-memory. The tick emits `demo.updated` only to that user. Profile → Live demo shows it. The payload is marked `demo`, `synthetic`, and `settlesBets: false`.
+
+```bash
+# optional; otherwise the app uses EXPO_PUBLIC_API_URL with /api/v1 removed
+# EXPO_PUBLIC_SOCKET_URL=http://localhost:4000
+```
+
+The admin dev server proxies `/socket.io` to `http://127.0.0.1:4000`. The admin UI still uses REST for its pages. No database migration is required for sockets, health checks, suspend/resume, or the settlement lock (`OPEN`, `SUSPENDED`, `CLOSED`, and `SETTLED` already exist).
+
+Example snapshot:
+
+```json
+{ "demo": true, "synthetic": true, "settlesBets": false, "id": "demo-market", "version": 1, "price": 1.5 }
+```
+
+Example socket payload:
+
+```json
+{ "type": "demo.updated", "entityId": 0, "timestamp": "2026-10-17T12:00:00.000Z", "seq": 4, "data": { "demo": true, "synthetic": true, "version": 2, "price": 1.51 } }
+```
+
+Verified spot prices use the same `update` event with type `crypto.updated`. The pair is not a numeric market id, so `entityId` is `1` for BTCUSDT, `2` for ETHUSDT, and `3` for SOLUSDT, and `data.symbol` is the pair string. CricketData scores use `cricket.updated` with `entityId` `0` because match ids are UUIDs; the client matches `data.matchId`. These events do not change betting odds, wallets, or settlement. The sports ticker remains a separate synthetic feed.
+
+Live-test checklist:
+
+1. Sign in on the app and confirm the header says Live.
+2. Open Profile → Live demo. The snapshot loads from `GET /api/v1/demo/snapshot`.
+3. Press Publish demo update. The version increases from the socket event and a refresh still matches the API.
+4. Stop the network. The header moves to Reconnecting, then Offline, and a focused market screen polls instead of spinning.
+5. Restore the network. The header returns to Live and the screen refetches.
+6. Restart the API. Clients disconnect, then reconnect and load the latest API snapshot. Missed ticks are not replayed.
+7. `curl http://localhost:4000/health` stays 200 while the process is up. Stop PostgreSQL and `curl -i http://localhost:4000/health/ready` returns 503. Start PostgreSQL and it returns 200. Liveness stays 200 in both cases.
+
+Market suspend and resume (Super Admin only):
+
+- `POST /api/v1/admin/markets/:id/suspend`
+- `POST /api/v1/admin/markets/:id/resume`
+
+Settlement stays `POST /api/v1/admin/markets/:id/settle`. It locks the market row and the open bets in one transaction so a concurrent bet cannot be accepted and then left open. Fixture sync no longer marks a match completed because a time window elapsed; completion stays an administrator settlement action unless a stored terminal status (`COMPLETED`, `CANCELLED`, `POSTPONED`) is already set.
+
 ## Checks
 
 ```bash

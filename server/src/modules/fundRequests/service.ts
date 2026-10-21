@@ -8,6 +8,7 @@ import { clientScope } from '../../core/tenant';
 import { prisma } from '../../db';
 import { LOOKUP_IDS } from '../../lib/lookupCache';
 import { ROLE_IDS } from '../../lib/roleCache';
+import { emitUser } from '../../realtime/hub';
 import { fetchAdminFundRequestById, fetchAdminFundRequestsPage, toFundRequestDto } from './dto';
 import { CreateFundRequestInput, ListFundRequestsQuery } from './schemas';
 
@@ -185,5 +186,8 @@ export async function resolveFundRequest(actor: Actor, id: number, decision: 'AP
     });
   });
 
-  return toFundRequestDto(await fetchAdminFundRequestById(prisma, id));
+  const dto = toFundRequestDto(await fetchAdminFundRequestById(prisma, id));
+  emitUser(existing.userId, decision === 'APPROVE' ? 'wallet.updated' : 'wallet.rejected', id);
+  emitUser(existing.userId, 'notification.created', id);
+  return dto;
 }

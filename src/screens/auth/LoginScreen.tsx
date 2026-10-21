@@ -3,11 +3,12 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 
-import { AppButton, AppText, IconBadge, Screen, TextField, Touchable } from '@components/common';
+import { AppButton, AppText, Card, IconBadge, Screen, TextField, Touchable } from '@components/common';
 import { useAuth } from '@context/AuthContext';
 import { useTheme } from '@context/ThemeContext';
 import { ColorPalette, radius, spacing } from '@theme';
 import { emailOrMobileError, passwordError } from '@utils/validation';
+import { readableErrorMessage } from '@/api/errorMessage';
 import { RootStackParamList } from '@navigation/types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -39,7 +40,7 @@ export function LoginScreen() {
     const result = await login(identifier.trim(), password);
     setSubmitting(false);
     if (!result.success) {
-      setAuthError(result.error ?? 'Something went wrong. Please try again.');
+      setAuthError(readableErrorMessage(result.error, 'Something went wrong. Please try again.'));
     }
   };
 
@@ -60,7 +61,7 @@ export function LoginScreen() {
             </AppText>
           </View>
 
-          <View style={styles.form}>
+          <Card style={styles.form}>
             <TextField
               label="Email or Mobile Number"
               icon="person-outline"
@@ -104,7 +105,7 @@ export function LoginScreen() {
               size="lg"
               style={styles.submit}
             />
-          </View>
+          </Card>
 
           <AppText variant="caption" color={colors.textMuted} align="center" style={styles.footer}>
             This app uses virtual currency for entertainment purposes only.{'\n'}No real money is involved.

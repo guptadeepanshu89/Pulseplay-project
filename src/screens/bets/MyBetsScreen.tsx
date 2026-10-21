@@ -8,6 +8,7 @@ import { BetCard } from '@components/bet/BetCard';
 import { spacing } from '@theme';
 import { layout } from '@constants/layout';
 import { useLoadOnMount } from '@hooks/useLoadOnMount';
+import { useLiveRefresh } from '@/realtime/live';
 import { getAllBets } from '@services/betService';
 import { Bet, BetStatus } from '@/types/bet';
 import { RootStackParamList } from '@navigation/types';
@@ -40,6 +41,7 @@ export function MyBetsScreen() {
   }, []);
 
   useLoadOnMount(loadData);
+  useLiveRefresh(loadData);
 
   const filtered = useMemo(
     () => (filter === 'ALL' ? bets : bets.filter((bet) => bet.status === filter)),

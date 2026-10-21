@@ -18,6 +18,7 @@ import { spacing } from '@theme';
 import { layout } from '@constants/layout';
 import { useBetSlip } from '@context/BetSlipContext';
 import { useLoadOnMount } from '@hooks/useLoadOnMount';
+import { useLiveRefresh } from '@/realtime/live';
 import { getEvents } from '@services/eventService';
 import { getMarkets } from '@services/marketService';
 import { EventCategory, MarketEvent } from '@/types/event';
@@ -52,6 +53,27 @@ export function MarketsScreen() {
   }, []);
 
   useLoadOnMount(loadData);
+  useLiveRefresh(
+    loadData,
+    markets.map((market) => market.id),
+    (event) => {
+      const nextPrices = event.data?.selections;
+      if (!nextPrices) return;
+      setMarkets((current) =>
+        current.map((market) =>
+          market.id !== event.entityId
+            ? market
+            : {
+                ...market,
+                selections: market.selections.map((selection) => {
+                  const next = nextPrices.find((item) => item.id === selection.id);
+                  return next ? { ...selection, currentPrice: next.currentPrice } : selection;
+                }),
+              },
+        ),
+      );
+    },
+  );
 
   const filteredEvents = useMemo(
     () => (filter === 'ALL' ? events : events.filter((event) => event.category === filter)),
@@ -67,7 +89,7 @@ export function MarketsScreen() {
 
   const handleSelect = (market: Market, selectionId: number) => {
     const selection = market.selections.find((item) => item.id === selectionId);
-    if (!selection) return;
+    if (!selection || market.status !== 'OPEN') return;
     toggleSelection({
       eventId: market.eventId,
       eventName: eventNameFor(market.eventId) ?? market.name,
@@ -92,7 +114,11 @@ export function MarketsScreen() {
         </View>
       ) : (
         <RefreshableScrollView onRefresh={loadData} contentContainerStyle={styles.scrollContent}>
-          <SectionHeader title="Live & Upcoming" />
+          <SectionHeader
+            title="Live & Upcoming"
+            actionLabel={filter === 'CRICKET' ? 'Ball-by-ball' : undefined}
+            onSeeAll={filter === 'CRICKET' ? () => navigation.navigate('CricketFeed') : undefined}
+          />
           <HorizontalCardRow cardHeight={EVENT_CARD_HEIGHT}>
             {filteredEvents.map((event) => (
               <EventCard

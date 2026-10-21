@@ -1,5 +1,7 @@
 import { prisma } from '../db';
 import { LOOKUP_IDS } from '../lib/lookupCache';
+import { emitAll, emitMarket } from '../realtime/hub';
+import { noteWorker, safeError, workersAcceptTicks } from '../realtime/runtime';
 
 const TICK_INTERVAL_MS = 5000;
 const PRICE_JITTER_RATIO = 0.03;
@@ -10,10 +12,11 @@ function jitterPrice(current: number): number {
   return Math.max(MIN_PRICE, Number((current + delta).toFixed(2)));
 }
 
-async function tick(): Promise<void> {
+export async function runSportsTick(): Promise<void> {
   const cricketCategory = LOOKUP_IDS.EVENT_CATEGORY.CRICKET;
   const footballCategory = LOOKUP_IDS.EVENT_CATEGORY.FOOTBALL;
 
+  let scoresChanged = false;
   const liveEvents = await prisma.event.findMany({
     where: { statusId: LOOKUP_IDS.EVENT_STATUS.LIVE, categoryId: { in: [cricketCategory, footballCategory] } },
     include: { markets: { where: { statusId: LOOKUP_IDS.MARKET_STATUS.OPEN }, include: { selections: true } } },
@@ -31,6 +34,7 @@ async function tick(): Promise<void> {
           awayScore: nudgeAway && event.awayScore ? String(Number(event.awayScore) + 1) : event.awayScore,
         },
       });
+      scoresChanged = true;
     }
 
     if (event.categoryId === cricketCategory && event.homeScore) {
@@ -39,20 +43,24 @@ async function tick(): Promise<void> {
         where: { id: event.id },
         data: { homeScore: String(Number(event.homeScore) + runsDelta) },
       });
+      scoresChanged = true;
     }
 
     for (const market of event.markets) {
+      const updated: Array<{ id: number; currentPrice: number; priceVersion: number }> = [];
       for (const selection of market.selections) {
-        await prisma.marketSelection.update({
+        const currentPrice = jitterPrice(selection.currentPrice.toNumber());
+        const row = await prisma.marketSelection.update({
           where: { id: selection.id },
-          data: {
-            currentPrice: jitterPrice(selection.currentPrice.toNumber()),
-            priceVersion: { increment: 1 },
-          },
+          data: { currentPrice, priceVersion: { increment: 1 } },
         });
+        updated.push({ id: row.id, currentPrice: row.currentPrice.toNumber(), priceVersion: row.priceVersion });
       }
+      emitMarket(market.id, 'odds.updated', { selections: updated });
     }
   }
+
+  if (scoresChanged) emitAll('events.updated', 0);
 }
 
 export function startSportsTicker(): void {
@@ -62,12 +70,14 @@ export function startSportsTicker(): void {
     if (inFlight) return;
     inFlight = true;
     try {
-      await tick();
+      await runSportsTick();
+      noteWorker('sportsTicker', 'ok');
     } catch (error) {
-      console.error('[sportsTicker] tick failed:', error);
+      noteWorker('sportsTicker', 'error', error);
+      console.error('[sportsTicker] tick failed:', safeError(error));
     } finally {
       inFlight = false;
-      setTimeout(run, TICK_INTERVAL_MS);
+      if (workersAcceptTicks()) setTimeout(run, TICK_INTERVAL_MS);
     }
   };
 

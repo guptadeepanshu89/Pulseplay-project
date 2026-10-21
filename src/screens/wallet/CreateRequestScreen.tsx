@@ -15,18 +15,19 @@ type Props = NativeStackScreenProps<RootStackParamList, 'CreateRequest'>;
 export function CreateRequestScreen({ navigation }: Props) {
   const { colors } = useTheme();
   const [amount, setAmount] = useState('');
+  const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | undefined>();
 
   const numericAmount = Number(amount.replace(/[^0-9]/g, ''));
-  const canSubmit = numericAmount > 0 && !submitting;
+  const canSubmit = numericAmount > 0 && reason.trim().length > 0 && !submitting;
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
     setError(undefined);
     setSubmitting(true);
     try {
-      await createWalletRequest('INCREASE', numericAmount);
+      await createWalletRequest('INCREASE', numericAmount, reason.trim());
       navigation.replace('PermissionRequests');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not create request. Please try again.');
@@ -47,6 +48,7 @@ export function CreateRequestScreen({ navigation }: Props) {
           value={amount}
           onChangeText={setAmount}
         />
+        <TextField label="Reason" placeholder="Why is this request needed?" value={reason} onChangeText={setReason} />
 
         {error && (
           <AppText variant="caption" color={colors.negative} align="center">

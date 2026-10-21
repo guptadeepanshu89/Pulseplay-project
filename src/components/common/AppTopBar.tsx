@@ -10,6 +10,7 @@ import { useWallet } from '@context/WalletContext';
 import { useNotifications } from '@context/NotificationContext';
 import { formatCurrencyCompact } from '@utils/formatCurrency';
 import { RootStackParamList } from '@navigation/types';
+import { useConnectionState } from '@/realtime/live';
 
 import { AppText } from './AppText';
 import { IconBadge } from './IconBadge';
@@ -28,12 +29,15 @@ export function AppTopBar() {
   const styles = createStyles(colors);
   const { wallet } = useWallet();
   const { unreadCount } = useNotifications();
+  const connection = useConnectionState();
+  const connectionLabel = connection === 'connected' ? 'Live' : connection === 'reconnecting' || connection === 'connecting' ? 'Reconnecting' : 'Offline';
 
   return (
     <View style={styles.container}>
       <View style={styles.brand}>
         <IconBadge icon="pulse" size={BRAND_MARK_SIZE} iconSize={BRAND_ICON_SIZE} borderRadius={radius.md} />
         <AppText variant="bodySemibold">PulsePlay</AppText>
+        <AppText variant="caption" color={connection === 'connected' ? colors.positive : colors.textMuted}>{connectionLabel}</AppText>
       </View>
 
       <View style={styles.actions}>
@@ -83,9 +87,9 @@ const createStyles = (colors: ColorPalette) =>
       paddingHorizontal: spacing.md,
       height: 36,
       borderRadius: radius.full,
-      backgroundColor: colors.surfaceElevated,
+      backgroundColor: colors.accentMuted,
       borderWidth: 1,
-      borderColor: colors.border,
+      borderColor: colors.accent,
     },
     bellButton: {
       width: 36,

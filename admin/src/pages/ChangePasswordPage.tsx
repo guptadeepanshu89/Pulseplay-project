@@ -27,7 +27,7 @@ export function ChangePasswordPage() {
   };
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', paddingTop: user?.mustChangePassword ? 80 : 8 }}>
+    <div className={user?.mustChangePassword ? 'pp-change-password pp-change-password--forced' : 'pp-change-password'}>
       <Card style={{ width: '100%', maxWidth: 440 }} bordered={false} title="Change password">
         {user?.mustChangePassword && (
           <Alert

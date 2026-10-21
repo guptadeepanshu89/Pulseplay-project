@@ -85,10 +85,10 @@ const SPLIT_TRACK_HEIGHT = 6;
 const createStyles = (colors: ColorPalette, scheme: ThemeScheme) =>
   StyleSheet.create({
     card: {
-      backgroundColor: colors.surface,
+      backgroundColor: colors.surfaceElevated,
       borderRadius: radius.xl,
       borderWidth: 1,
-      borderColor: colors.border,
+      borderColor: colors.accent,
       padding: spacing.xl,
       ...cardElevation(colors, scheme),
     },

@@ -30,14 +30,22 @@ export function MarketOddsCard({
 
   return (
     <Touchable onPress={onPressCard} disabled={!onPressCard}>
-      <Card style={fullWidth ? styles.cardFullWidth : styles.card}>
+      <Card
+        style={[
+          fullWidth ? styles.cardFullWidth : styles.card,
+          {
+            borderColor:
+              market.status === 'OPEN' ? colors.border : market.status === 'SUSPENDED' ? colors.warning : colors.textMuted,
+          },
+        ]}
+      >
         <View style={styles.header}>
           {eventName && (
             <AppText variant="caption" color={colors.textSecondary} numberOfLines={1} style={styles.eventName}>
               {eventName}
             </AppText>
           )}
-          {isSuspended && <Badge label="Suspended" status="SUSPENDED" />}
+          {isSuspended && <Badge label={market.status === 'SUSPENDED' ? 'Suspended' : market.status} status="SUSPENDED" />}
         </View>
         <AppText variant="bodySemibold" style={styles.name} numberOfLines={2}>
           {market.name}

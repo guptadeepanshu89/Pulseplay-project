@@ -1,5 +1,5 @@
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 
 import { AppButton, AppText, Badge, Card, Header, Screen, Touchable } from '@components/common';
@@ -8,6 +8,7 @@ import { cardElevation, ColorPalette, radius, spacing } from '@theme';
 import { layout } from '@constants/layout';
 import { useBetSlip } from '@context/BetSlipContext';
 import { ThemeScheme, useTheme } from '@context/ThemeContext';
+import { useLiveRefresh } from '@/realtime/live';
 import { getMarketById } from '@services/marketService';
 import { getEventById } from '@services/eventService';
 import { Market } from '@/types/market';
@@ -24,7 +25,7 @@ export function MarketDetailScreen({ route, navigation }: Props) {
   const [market, setMarket] = useState<Market | null>(null);
   const [event, setEvent] = useState<MarketEvent | null>(null);
 
-  useEffect(() => {
+  const loadMarket = useCallback(() => {
     getMarketById(marketId).then((result) => {
       setMarket(result ?? null);
       if (result) {
@@ -32,6 +33,27 @@ export function MarketDetailScreen({ route, navigation }: Props) {
       }
     });
   }, [marketId]);
+
+  useEffect(() => {
+    loadMarket();
+  }, [loadMarket]);
+
+  useLiveRefresh(loadMarket, [marketId], (event) => {
+    if (event.entityId !== marketId) return;
+    const nextPrices = event.data?.selections;
+    if (!nextPrices) return;
+    setMarket((current) =>
+      current
+        ? {
+            ...current,
+            selections: current.selections.map((selection) => {
+              const next = nextPrices.find((item) => item.id === selection.id);
+              return next ? { ...selection, currentPrice: next.currentPrice } : selection;
+            }),
+          }
+        : current,
+    );
+  });
 
   if (!market || !event) {
     return (
@@ -95,10 +117,16 @@ export function MarketDetailScreen({ route, navigation }: Props) {
           <AppText variant="h3" style={styles.marketName}>
             {market.name}
           </AppText>
-          {isSuspended && <Badge label="Suspended" status="SUSPENDED" />}
+          {isSuspended && <Badge label={market.status === 'SUSPENDED' ? 'Suspended' : market.status} status="SUSPENDED" />}
         </View>
         <AppText variant="caption" color={colors.textSecondary} style={styles.marketMeta}>
-          {isSuspended ? 'New bets are not accepted while this market is suspended.' : 'Last updated just now'}
+          {market.status === 'SUSPENDED'
+            ? 'New bets are not accepted while this market is suspended.'
+            : market.status === 'SETTLED'
+              ? 'This market is settled. New bets are not accepted.'
+              : market.status === 'CLOSED'
+                ? 'This market is closed. New bets are not accepted.'
+                : 'Last updated just now'}
         </AppText>
 
         <View style={styles.selections}>

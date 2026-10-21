@@ -3,6 +3,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useCallback, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
+import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 import {
   AppButton,
@@ -16,6 +17,7 @@ import {
   Screen,
   SectionHeader,
   Touchable,
+  EmptyState,
 } from '@components/common';
 import { EventCard, EVENT_CARD_HEIGHT } from '@components/market/EventCard';
 import { EventsMarketsLoadingSkeleton } from '@components/market/EventsMarketsLoadingSkeleton';
@@ -28,6 +30,7 @@ import { ThemeScheme, useTheme } from '@context/ThemeContext';
 import { useWallet } from '@context/WalletContext';
 import { useBetSlip } from '@context/BetSlipContext';
 import { useLoadOnMount } from '@hooks/useLoadOnMount';
+import { useLiveRefresh } from '@/realtime/live';
 import { getLiveEvents } from '@services/eventService';
 import { getMarkets } from '@services/marketService';
 import { getRecentBets } from '@services/betService';
@@ -71,7 +74,7 @@ export function HomeScreen() {
   const { user } = useAuth();
   const { colors, scheme } = useTheme();
   const styles = createStyles(colors, scheme);
-  const { wallet } = useWallet();
+  const { wallet, error: walletError } = useWallet();
   const { toggleSelection } = useBetSlip();
 
   const [liveEvents, setLiveEvents] = useState<MarketEvent[]>([]);
@@ -79,17 +82,25 @@ export function HomeScreen() {
   const [events, setEvents] = useState<MarketEvent[]>([]);
   const [recentBets, setRecentBets] = useState<Bet[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
-    const [live, markets, bets] = await Promise.all([getLiveEvents(), getMarkets(), getRecentBets(3)]);
-    setLiveEvents(live);
-    setEvents(live);
-    setTopMarkets(markets.slice(0, TOP_MARKETS_LIMIT));
-    setRecentBets(bets);
-    setLoading(false);
+    try {
+      const [live, markets, bets] = await Promise.all([getLiveEvents(), getMarkets(), getRecentBets(3)]);
+      setLiveEvents(live);
+      setEvents(live);
+      setTopMarkets(markets.slice(0, TOP_MARKETS_LIMIT));
+      setRecentBets(bets);
+      setLoadError(null);
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'Cannot reach the server. Check your connection and try again.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useLoadOnMount(loadData);
+  useLiveRefresh(loadData);
 
   const firstCryptoEventId = events.find((event) => event.category === 'CRYPTO')?.id;
 
@@ -125,12 +136,26 @@ export function HomeScreen() {
         </View>
 
         <Card style={styles.balanceCard}>
+          <Svg pointerEvents="none" width="100%" height="100%" style={styles.balanceGlow}>
+            <Defs>
+              <LinearGradient id="homeWalletGlow" x1="0" y1="0" x2="1" y2="1">
+                <Stop offset="0" stopColor={colors.accent} stopOpacity={0.45} />
+                <Stop offset="1" stopColor={colors.info} stopOpacity={0.05} />
+              </LinearGradient>
+            </Defs>
+            <Rect width="100%" height="100%" fill="url(#homeWalletGlow)" />
+          </Svg>
           <AppText variant="captionMedium" color={colors.textSecondary}>
             Total Wallet Balance
           </AppText>
           <AppText variant="display" style={styles.balanceAmount}>
             {formatCurrency((wallet?.availableBalance ?? 0) + (wallet?.lockedBalance ?? 0))}
           </AppText>
+          {walletError ? (
+            <AppText variant="caption" color={colors.negative} style={styles.connectionError}>
+              {walletError}
+            </AppText>
+          ) : null}
           <AppButton label="Add Funds" onPress={() => navigation.navigate('CreateRequest')} variant="primary" fullWidth />
         </Card>
 
@@ -146,8 +171,14 @@ export function HomeScreen() {
                 size={QUICK_ACCESS_ICON_SIZE}
                 iconSize={layout.iconSizeLarge}
                 borderRadius={radius.lg}
-                backgroundColor={scheme === 'light' ? colors.accentMuted : colors.surface}
-                bordered={scheme !== 'light'}
+                color={item.label === 'Football' ? colors.positive : item.label === 'Crypto' ? colors.warning : item.label === 'Election' ? colors.info : colors.accent}
+                backgroundColor={
+                  item.label === 'Football'
+                    ? colors.positiveMuted
+                    : item.label === 'Crypto'
+                      ? colors.warningMuted
+                      : colors.accentMuted
+                }
               />
               <AppText variant="caption" color={colors.textSecondary}>
                 {item.label}
@@ -160,8 +191,15 @@ export function HomeScreen() {
           <View style={styles.loadingBlock}>
             <EventsMarketsLoadingSkeleton />
           </View>
+        ) : loadError && liveEvents.length === 0 && topMarkets.length === 0 ? (
+          <EmptyState icon="cloud-offline-outline" title="Can't reach the server" message={loadError} />
         ) : (
           <>
+            {loadError ? (
+              <AppText variant="caption" color={colors.negative} style={styles.connectionError}>
+                {loadError}
+              </AppText>
+            ) : null}
             <SectionHeader title="Live Now" onSeeAll={() => navigation.navigate('MainTabs', { screen: 'Markets' })} />
             <HorizontalCardRow cardHeight={EVENT_CARD_HEIGHT}>
               {liveEvents.map((event) => (
@@ -256,6 +294,19 @@ const createStyles = (colors: ColorPalette, scheme: ThemeScheme) =>
     },
     balanceCard: {
       marginBottom: spacing.lg,
+      overflow: 'hidden',
+      backgroundColor: colors.surfaceElevated,
+      borderColor: colors.accent,
+    },
+    balanceGlow: {
+      position: 'absolute',
+      top: 0,
+      right: 0,
+      bottom: 0,
+      left: 0,
+    },
+    connectionError: {
+      marginBottom: spacing.md,
     },
     balanceAmount: {
       marginTop: spacing.xs,

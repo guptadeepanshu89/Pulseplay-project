@@ -40,7 +40,7 @@ export function NavRow({ icon, label, onPress, divider = false, style }: NavRowP
   }
 
   return (
-    <Touchable style={rowStyle} onPress={onPress}>
+    <Touchable style={rowStyle} onPress={onPress} accessibilityRole="button" accessibilityLabel={label}>
       {content}
     </Touchable>
   );

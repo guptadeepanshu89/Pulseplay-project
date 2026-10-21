@@ -27,7 +27,7 @@ import { RootStackParamList } from '@navigation/types';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type IoniconName = keyof typeof Ionicons.glyphMap;
-type NavigableRoute = 'PersonalInfo' | 'ChangePassword' | 'HelpSupport' | 'AboutUs';
+type NavigableRoute = 'PersonalInfo' | 'ChangePassword' | 'HelpSupport' | 'AboutUs' | 'DemoLive';
 
 interface SettingsItem {
   label: string;
@@ -53,6 +53,7 @@ const SECTIONS: SettingsSection[] = [
     items: [
       { label: 'Help & Support', icon: 'help-circle-outline', route: 'HelpSupport' },
       { label: 'About Us', icon: 'information-circle-outline', route: 'AboutUs' },
+      { label: 'Live demo', icon: 'pulse-outline', route: 'DemoLive' },
     ],
   },
 ];

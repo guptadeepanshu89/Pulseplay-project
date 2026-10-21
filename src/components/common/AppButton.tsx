@@ -51,12 +51,14 @@ export function AppButton({
   const variantStyle = variantStyles[variant];
   const sizeStyle = SIZE_STYLES[size];
   const isDisabled = disabled || loading;
-  const showLiftShadow = variant === 'primary' && scheme === 'light' && !isDisabled;
+  const showLiftShadow = (variant === 'primary' || variant === 'danger') && !isDisabled;
 
   return (
     <Pressable
       onPress={onPress}
       disabled={isDisabled}
+      accessibilityRole="button"
+      accessibilityLabel={label}
       style={({ pressed }) => [
         styles.base,
         {
@@ -70,9 +72,9 @@ export function AppButton({
         },
         showLiftShadow &&
           platformShadow({
-            color: colors.accent,
-            offsetHeight: PRIMARY_SHADOW_OFFSET_HEIGHT,
-            opacity: PRIMARY_SHADOW_OPACITY,
+            color: variant === 'danger' ? colors.negative : colors.accent,
+            offsetHeight: scheme === 'dark' ? 0 : PRIMARY_SHADOW_OFFSET_HEIGHT,
+            opacity: scheme === 'dark' ? 0.45 : PRIMARY_SHADOW_OPACITY,
             radius: PRIMARY_SHADOW_RADIUS,
             elevation: PRIMARY_ELEVATION,
           }),
@@ -90,7 +92,7 @@ export function AppButton({
 
 const styles = StyleSheet.create({
   base: {
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     alignItems: 'center',
     justifyContent: 'center',
   },

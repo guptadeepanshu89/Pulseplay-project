@@ -26,7 +26,7 @@ export function Badge({ label, status = 'NEUTRAL' }: BadgeProps) {
   const { colors } = useTheme();
 
   const statusColors: Record<BadgeStatus, { text: string; background: string }> = {
-    LIVE: { text: colors.live, background: colors.negativeMuted },
+    LIVE: { text: colors.white, background: colors.live },
     OPEN: { text: colors.positive, background: colors.positiveMuted },
     WON: { text: colors.positive, background: colors.positiveMuted },
     LOST: { text: colors.negative, background: colors.negativeMuted },

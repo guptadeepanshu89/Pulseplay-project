@@ -20,6 +20,16 @@ export interface SettleResult {
   pendingAccumulatorCount?: number;
 }
 
+export async function suspendMarket(marketId: number): Promise<{ marketId: number; status: string }> {
+  const { data } = await http.post(`/admin/markets/${marketId}/suspend`);
+  return data;
+}
+
+export async function resumeMarket(marketId: number): Promise<{ marketId: number; status: string }> {
+  const { data } = await http.post(`/admin/markets/${marketId}/resume`);
+  return data;
+}
+
 export async function settleMarket(marketId: number, winningSelectionId: number): Promise<SettleResult> {
   const { data } = await http.post(`/admin/markets/${marketId}/settle`, { winningSelectionId });
   return data;

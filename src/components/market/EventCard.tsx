@@ -14,8 +14,8 @@ interface EventCardProps {
 
 export function EventCard({ event, onPress }: EventCardProps) {
   const { colors, scheme } = useTheme();
-  const styles = createStyles(colors, scheme);
   const isLive = event.status === 'LIVE';
+  const styles = createStyles(colors, scheme, isLive, event.category);
 
   return (
     <Pressable onPress={onPress} style={({ pressed }) => [styles.card, { opacity: pressed ? 0.85 : 1 }]}>
@@ -33,17 +33,33 @@ export function EventCard({ event, onPress }: EventCardProps) {
       </View>
 
       <View style={styles.matchRow}>
-        <AppText variant="bodySemibold" style={styles.teamName} numberOfLines={1}>
-          {event.homeTeam?.name ?? event.name}
-        </AppText>
+        <View style={styles.teamIdentity}>
+          <View style={styles.mark}>
+            <AppText variant="label" color={colors.accent}>
+              {(event.homeTeam?.shortName ?? event.name).slice(0, 2).toUpperCase()}
+            </AppText>
+          </View>
+          <AppText variant="bodySemibold" style={styles.teamName} numberOfLines={1}>
+            {event.homeTeam?.name ?? event.name}
+          </AppText>
+        </View>
         <AppText variant="h3" color={isLive ? colors.textPrimary : colors.textMuted}>
           {event.homeTeam?.score ?? '-'}
         </AppText>
       </View>
       <View style={styles.matchRow}>
-        <AppText variant="bodySemibold" style={styles.teamName} numberOfLines={1}>
-          {event.awayTeam?.name ?? ''}
-        </AppText>
+        <View style={styles.teamIdentity}>
+          {event.awayTeam ? (
+            <View style={styles.mark}>
+              <AppText variant="label" color={colors.info}>
+                {event.awayTeam.shortName.slice(0, 2).toUpperCase()}
+              </AppText>
+            </View>
+          ) : null}
+          <AppText variant="bodySemibold" style={styles.teamName} numberOfLines={1}>
+            {event.awayTeam?.name ?? ''}
+          </AppText>
+        </View>
         {event.awayTeam && (
           <AppText variant="h3" color={isLive ? colors.textPrimary : colors.textMuted}>
             {event.awayTeam.score ?? '-'}
@@ -59,17 +75,18 @@ export function EventCard({ event, onPress }: EventCardProps) {
 }
 
 const CARD_WIDTH = 220;
-export const EVENT_CARD_HEIGHT = 148;
+export const EVENT_CARD_HEIGHT = 156;
 
-const createStyles = (colors: ColorPalette, scheme: ThemeScheme) =>
+const createStyles = (colors: ColorPalette, scheme: ThemeScheme, isLive: boolean, category: string) =>
   StyleSheet.create({
     card: {
       width: CARD_WIDTH,
       height: EVENT_CARD_HEIGHT,
-      backgroundColor: colors.surface,
+      backgroundColor: colors.surfaceElevated,
       borderRadius: radius.lg,
       borderWidth: 1,
-      borderColor: colors.border,
+      borderColor: isLive ? colors.live : category === 'CRYPTO' ? colors.accent : colors.border,
+      borderLeftWidth: 3,
       padding: spacing.md,
       ...cardElevation(colors, scheme),
     },
@@ -89,9 +106,23 @@ const createStyles = (colors: ColorPalette, scheme: ThemeScheme) =>
       justifyContent: 'space-between',
       marginBottom: spacing.xxs,
     },
+    teamIdentity: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginRight: spacing.sm,
+      gap: spacing.xs,
+    },
+    mark: {
+      width: 28,
+      height: 28,
+      borderRadius: radius.full,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.accentMuted,
+    },
     teamName: {
       flex: 1,
-      marginRight: spacing.sm,
     },
     minute: {
       marginTop: spacing.xs,

@@ -1,12 +1,14 @@
 import { createContext, PropsWithChildren, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 import { AppNotification } from '@/types/notification';
+import { useAlwaysLive } from '@/realtime/live';
 import { getNotifications, markAllNotificationsRead, markNotificationRead } from '@/services/notificationService';
 
 interface NotificationContextValue {
   notifications: AppNotification[];
   unreadCount: number;
   loading: boolean;
+  error: string | null;
   refresh: () => Promise<void>;
   markRead: (notificationId: number) => Promise<void>;
   markAllRead: () => Promise<void>;
@@ -17,12 +19,18 @@ const NotificationContext = createContext<NotificationContextValue | undefined>(
 export function NotificationProvider({ children }: PropsWithChildren) {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    const result = await getNotifications();
-    setNotifications(result);
-    setLoading(false);
+    try {
+      setNotifications(await getNotifications());
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Cannot reach the server. Check your connection and try again.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   const markRead = useCallback(async (notificationId: number) => {
@@ -41,12 +49,13 @@ export function NotificationProvider({ children }: PropsWithChildren) {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load from the service layer on mount
     refresh();
   }, [refresh]);
+  useAlwaysLive(refresh, ['notification.created', 'poll', 'socket.reconnected', 'app.foreground', 'snapshot.required']);
 
   const unreadCount = notifications.filter((item) => !item.read).length;
 
   const value = useMemo<NotificationContextValue>(
-    () => ({ notifications, unreadCount, loading, refresh, markRead, markAllRead }),
-    [notifications, unreadCount, loading, refresh, markRead, markAllRead],
+    () => ({ notifications, unreadCount, loading, error, refresh, markRead, markAllRead }),
+    [notifications, unreadCount, loading, error, refresh, markRead, markAllRead],
   );
 
   return <NotificationContext.Provider value={value}>{children}</NotificationContext.Provider>;

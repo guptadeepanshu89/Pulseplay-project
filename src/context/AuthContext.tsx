@@ -3,6 +3,7 @@ import { createContext, PropsWithChildren, useContext, useEffect, useMemo, useRe
 import { User } from '@/types/user';
 import { getMe, login as loginRequest, logout as logoutRequest } from '@/services/authService';
 import { ApiError, setToken } from '@/api/client';
+import { readableErrorMessage } from '@/api/errorMessage';
 
 interface AuthState {
   isAuthenticated: boolean;
@@ -94,10 +95,13 @@ export function AuthProvider({ children }: PropsWithChildren) {
               case 'INVALID_CREDENTIALS':
                 return { success: false, error: 'Invalid email/mobile number or password.' };
               default:
-                return { success: false, error: error.message || 'Something went wrong. Please try again.' };
+                if (error.status === 404) return { success: false, error: 'The sign-in service was not found. Check the API address.' };
+                if (error.status === 0) return { success: false, error: 'Cannot reach the server. Check your connection and try again.' };
+                if (error.status >= 500) return { success: false, error: 'The server could not sign you in. Please try again.' };
+                return { success: false, error: readableErrorMessage(error.message) };
             }
           }
-          return { success: false, error: 'Something went wrong. Please try again.' };
+          return { success: false, error: 'Cannot reach the server. Check your connection and try again.' };
         }
       },
       logout: async () => {

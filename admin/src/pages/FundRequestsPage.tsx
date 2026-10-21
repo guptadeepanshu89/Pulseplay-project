@@ -77,6 +77,7 @@ export function FundRequestsPage() {
             loading={isLoading}
             dataSource={data?.items}
             tableLayout="fixed"
+            scroll={{ x: 920 }}
             style={{ width: '100%' }}
             pagination={{
               current: page,
