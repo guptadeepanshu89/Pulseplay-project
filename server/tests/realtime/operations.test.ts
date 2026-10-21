@@ -7,7 +7,7 @@ import { prisma } from '../../src/db';
 import { resetDemo } from '../../src/modules/demo/state';
 import { buildReadiness } from '../../src/realtime/health';
 import { attachRealtime, closeRealtime, emitUser, realtimeAttached } from '../../src/realtime/hub';
-import { allowSocketEvent, noteWorker, workerSnapshot } from '../../src/realtime/runtime';
+import { allowSocketEvent, noteWorker, socketCorsOrigin, workerSnapshot } from '../../src/realtime/runtime';
 import { api, bearer, loginToken, tokenFor } from '../helpers/app';
 import { createUserWithWallet } from '../helpers/factories';
 
@@ -73,6 +73,19 @@ describe('health and realtime operations', () => {
     expect(allowSocketEvent(bucket, 1_100, 2)).toBe(true);
     expect(allowSocketEvent(bucket, 1_200, 2)).toBe(false);
     expect(allowSocketEvent(bucket, 12_000, 2)).toBe(true);
+  });
+
+  it('requires an explicit CORS allowlist in production', () => {
+    const previousNode = process.env.NODE_ENV;
+    const previousCors = process.env.SOCKET_CORS_ORIGINS;
+    process.env.NODE_ENV = 'production';
+    delete process.env.SOCKET_CORS_ORIGINS;
+    expect(socketCorsOrigin()).toBe(false);
+    process.env.SOCKET_CORS_ORIGINS = 'https://app.example.com, https://admin.example.com';
+    expect(socketCorsOrigin()).toEqual(['https://app.example.com', 'https://admin.example.com']);
+    process.env.NODE_ENV = previousNode;
+    if (previousCors === undefined) delete process.env.SOCKET_CORS_ORIGINS;
+    else process.env.SOCKET_CORS_ORIGINS = previousCors;
   });
 
   it('does not deliver one user demo update to another user or change a wallet', async () => {

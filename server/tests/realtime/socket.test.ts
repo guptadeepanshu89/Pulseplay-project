@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { attachRealtime, emitAll, emitMarket, emitUser } from '../../src/realtime/hub';
 import { api, bearer, loginToken, tokenFor } from '../helpers/app';
+import { prisma } from '../helpers/db';
 import { betLeg, createOpenMarket, createUserWithWallet } from '../helpers/factories';
 
 const open: Array<{ socket?: Socket; close?: () => void }> = [];
@@ -59,15 +60,45 @@ describe('realtime sockets', () => {
 
   it('emits odds only to the subscribed market room', async () => {
     const { user } = await createUserWithWallet(100);
+    const { market } = await createOpenMarket();
     const { port, close } = await listen();
     const socket = connect(port, tokenFor(user.id, 'mobile'));
     open.push({ socket, close });
     await new Promise<void>((resolve) => socket.on('connect', () => resolve()));
-    socket.emit('subscribe:market', 42);
-    const event = new Promise<{ type: string; entityId: number }>((resolve) => socket.on('update', resolve));
-    await new Promise((resolve) => setTimeout(resolve, 30));
-    emitMarket(42, 'odds.updated', { selections: [{ id: 1, currentPrice: 1.5 }] });
-    await expect(event).resolves.toMatchObject({ type: 'odds.updated', entityId: 42 });
+    const subscribed = await socket.timeout(2000).emitWithAck('subscribe:market', market.id);
+    expect(subscribed).toEqual({ ok: true });
+    const event = new Promise<{ type: string; entityId: number }>((resolve) => {
+      socket.on('update', (payload: { type: string; entityId: number }) => {
+        if (payload.type === 'odds.updated') resolve(payload);
+      });
+    });
+    emitMarket(market.id, 'odds.updated', { selections: [{ id: 1, currentPrice: 1.5 }] });
+    await expect(event).resolves.toMatchObject({ type: 'odds.updated', entityId: market.id });
+  });
+
+  it('rejects a subscription to a missing market', async () => {
+    const { user } = await createUserWithWallet(100);
+    const { port, close } = await listen();
+    const socket = connect(port, tokenFor(user.id, 'mobile'));
+    open.push({ socket, close });
+    await new Promise<void>((resolve) => socket.on('connect', () => resolve()));
+    const result = await socket.timeout(2000).emitWithAck('subscribe:market', 9_999_999);
+    expect(result).toEqual({ ok: false, error: 'FORBIDDEN' });
+  });
+
+  it('rejects a blocked account on the handshake', async () => {
+    const { user } = await createUserWithWallet(100);
+    await prisma.user.update({ where: { id: user.id }, data: { isActive: 0 } });
+    const { port, close } = await listen();
+    const socket = connect(port, tokenFor(user.id, 'mobile'));
+    open.push({ socket, close });
+    await new Promise<void>((resolve, reject) => {
+      socket.on('connect', () => reject(new Error('connected')));
+      socket.on('connect_error', (error) => {
+        expect(error.message).toMatch(/ACCOUNT_BLOCKED/);
+        resolve();
+      });
+    });
   });
 
   it('broadcasts a live event update to a connected user without a market subscription', async () => {
@@ -76,8 +107,11 @@ describe('realtime sockets', () => {
     const socket = connect(port, tokenFor(user.id, 'mobile'));
     open.push({ socket, close });
     await new Promise<void>((resolve) => socket.on('connect', () => resolve()));
-    const event = new Promise<{ type: string; entityId: number }>((resolve) => socket.on('update', resolve));
-    await new Promise((resolve) => setTimeout(resolve, 30));
+    const event = new Promise<{ type: string; entityId: number }>((resolve) => {
+      socket.on('update', (payload: { type: string; entityId: number }) => {
+        if (payload.type === 'events.updated') resolve(payload);
+      });
+    });
     emitAll('events.updated', 0);
     await expect(event).resolves.toMatchObject({ type: 'events.updated', entityId: 0 });
   });
