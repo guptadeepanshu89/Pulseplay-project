@@ -32,7 +32,10 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "db:backup": "powershell -ExecutionPolicy Bypass -File database/scripts/backup.ps1",
+    "db:restore": "powershell -ExecutionPolicy Bypass -File database/scripts/restore.ps1 -TargetDatabase",
+    "db:verify": "powershell -ExecutionPolicy Bypass -File database/scripts/verify.ps1 -TargetDatabase"
   },
   "private": true
 }
