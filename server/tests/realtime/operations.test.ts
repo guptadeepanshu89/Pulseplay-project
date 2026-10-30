@@ -7,7 +7,14 @@ import { prisma } from '../../src/db';
 import { resetDemo } from '../../src/modules/demo/state';
 import { buildReadiness } from '../../src/realtime/health';
 import { attachRealtime, closeRealtime, emitUser, realtimeAttached } from '../../src/realtime/hub';
-import { allowSocketEvent, noteWorker, socketCorsOrigin, workerSnapshot } from '../../src/realtime/runtime';
+import {
+  allowSocketEvent,
+  defaultDevSocketCorsOrigins,
+  noteWorker,
+  parseSocketCorsOrigins,
+  socketCorsOrigin,
+  workerSnapshot,
+} from '../../src/realtime/runtime';
 import { api, bearer, loginToken, tokenFor } from '../helpers/app';
 import { createUserWithWallet } from '../helpers/factories';
 
@@ -83,6 +90,22 @@ describe('health and realtime operations', () => {
     expect(socketCorsOrigin()).toBe(false);
     process.env.SOCKET_CORS_ORIGINS = 'https://app.example.com, https://admin.example.com';
     expect(socketCorsOrigin()).toEqual(['https://app.example.com', 'https://admin.example.com']);
+    process.env.NODE_ENV = previousNode;
+    if (previousCors === undefined) delete process.env.SOCKET_CORS_ORIGINS;
+    else process.env.SOCKET_CORS_ORIGINS = previousCors;
+  });
+
+  it('allows Expo web localhost origins in development and parses custom lists', () => {
+    const previousNode = process.env.NODE_ENV;
+    const previousCors = process.env.SOCKET_CORS_ORIGINS;
+    process.env.NODE_ENV = 'development';
+    delete process.env.SOCKET_CORS_ORIGINS;
+    expect(defaultDevSocketCorsOrigins()).toContain('http://localhost:8081');
+    expect(socketCorsOrigin()).toEqual(defaultDevSocketCorsOrigins());
+    expect(parseSocketCorsOrigins('http://localhost:8081, https://tunnel.example.dev')).toEqual([
+      'http://localhost:8081',
+      'https://tunnel.example.dev',
+    ]);
     process.env.NODE_ENV = previousNode;
     if (previousCors === undefined) delete process.env.SOCKET_CORS_ORIGINS;
     else process.env.SOCKET_CORS_ORIGINS = previousCors;

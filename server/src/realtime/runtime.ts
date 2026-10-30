@@ -114,18 +114,31 @@ export function processSnapshot(): { uptimeSeconds: number; rssMb: number; heapU
   };
 }
 
-export function socketCorsOrigin(): true | string[] | false {
-  const raw = process.env.SOCKET_CORS_ORIGINS?.trim();
-  if (raw) {
-    const origins = raw.split(',').map((origin) => origin.trim()).filter(Boolean);
-    if (origins.length > 0) return origins;
-  }
-  // Production must set an explicit browser allowlist. Dev keeps open CORS for Expo/Vite.
+/** Local browser dev origins for Expo web, Metro, and admin Vite (not `*` — explicit allowlist). */
+export function defaultDevSocketCorsOrigins(): string[] {
+  return [
+    'http://localhost:8081',
+    'http://127.0.0.1:8081',
+    'http://localhost:19006',
+    'http://127.0.0.1:19006',
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+  ];
+}
+
+export function parseSocketCorsOrigins(raw: string | undefined): string[] {
+  if (!raw?.trim()) return [];
+  return raw.split(',').map((origin) => origin.trim()).filter(Boolean);
+}
+
+export function socketCorsOrigin(): string[] | false {
+  const configured = parseSocketCorsOrigins(process.env.SOCKET_CORS_ORIGINS);
+  if (configured.length > 0) return configured;
   if (process.env.NODE_ENV === 'production') {
     console.warn('[realtime] SOCKET_CORS_ORIGINS is unset in production; browser Socket.IO origins are denied.');
     return false;
   }
-  return true;
+  return defaultDevSocketCorsOrigins();
 }
 
 export function socketAdapterMode(): 'memory' {

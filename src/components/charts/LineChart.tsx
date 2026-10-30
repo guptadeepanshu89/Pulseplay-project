@@ -39,6 +39,16 @@ function buildPaths(data: PricePoint[], width: number, height: number) {
 
 export function LineChart({ data, width, height, positive }: LineChartProps) {
   const { colors } = useTheme();
+  if (data.length < 2) {
+    return (
+      <View style={{ width, height, justifyContent: 'center' }}>
+        <AppText variant="body" color={colors.textMuted}>
+          Not enough price history to draw a chart yet.
+        </AppText>
+      </View>
+    );
+  }
+
   const { linePath, areaPath, minPrice, maxPrice } = buildPaths(data, width, height);
   const lineColor = positive ? colors.positive : colors.negative;
 

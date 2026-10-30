@@ -1,7 +1,7 @@
 import { createContext, PropsWithChildren, useCallback, useContext, useMemo, useState } from 'react';
 
 import { Wallet } from '@/types/wallet';
-import { useAlwaysLive } from '@/realtime/live';
+import { useAlwaysLive, WALLET_SOCKET_TYPES } from '@/realtime/live';
 import { getWallet } from '@/services/walletService';
 import { useLoadOnMount } from '@hooks/useLoadOnMount';
 
@@ -32,7 +32,8 @@ export function WalletProvider({ children }: PropsWithChildren) {
   }, []);
 
   useLoadOnMount(refresh);
-  useAlwaysLive(refresh, ['wallet.updated', 'bet.placed', 'bet.settled', 'poll', 'socket.reconnected', 'app.foreground', 'snapshot.required']);
+  // Socket entity events only — no global poll/reconnect HTTP (Wallet tab refreshes on focus).
+  useAlwaysLive(refresh, [...WALLET_SOCKET_TYPES]);
 
   const value = useMemo<WalletContextValue>(() => ({ wallet, loading, error, refresh }), [wallet, loading, error, refresh]);
 

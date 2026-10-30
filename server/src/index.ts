@@ -5,6 +5,7 @@ import { stopWorkers } from './realtime/runtime';
 import { loadLookupCache, startLookupCacheRefresh } from './lib/lookupCache';
 import { loadRoleCache } from './lib/roleCache';
 import { startSportsTicker } from './workers/sportsTicker';
+import { startBybitSpotStream, stopBybitSpotStream } from './modules/crypto/bybitSpotStream';
 import { startCryptoFeed } from './workers/cryptoFeed';
 import { startFixturesSync } from './workers/fixturesSync';
 import { warnCricketConfig } from './modules/cricket/provider';
@@ -21,6 +22,7 @@ async function main() {
     attachRealtime(server);
     startLookupCacheRefresh();
     startSportsTicker();
+    startBybitSpotStream();
     startCryptoFeed();
     startFixturesSync();
   });
@@ -31,6 +33,7 @@ async function main() {
     closing = true;
     console.info(JSON.stringify({ scope: 'process', event: 'shutdown', signal }));
     stopWorkers();
+    stopBybitSpotStream();
     closeRealtime();
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(1), 10_000).unref();

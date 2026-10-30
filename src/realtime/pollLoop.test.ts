@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it, mock } from 'node:test';
 
-import { createLivePoll } from './pollLoop';
+import { createLivePoll, shouldPoll } from './pollLoop';
 
 function harness(initiallyConnected = false) {
   const events: string[] = [];
@@ -20,6 +20,15 @@ function harness(initiallyConnected = false) {
     },
   };
 }
+
+describe('shouldPoll', () => {
+  it('polls only when the screen is active, app is foreground, and socket is down', () => {
+    assert.equal(shouldPoll({ socketConnected: false, screenActive: true, appActive: true }), true);
+    assert.equal(shouldPoll({ socketConnected: true, screenActive: true, appActive: true }), false);
+    assert.equal(shouldPoll({ socketConnected: false, screenActive: false, appActive: true }), false);
+    assert.equal(shouldPoll({ socketConnected: false, screenActive: true, appActive: false }), false);
+  });
+});
 
 describe('live poll fallback', () => {
   afterEach(() => {

@@ -4,8 +4,8 @@ import { prisma } from '../db';
 import { authenticate } from '../core/middleware/authenticate';
 import { serialize } from '../lib/serialize';
 import { asyncHandler } from '../lib/asyncHandler';
-import { LOOKUP_IDS } from '../lib/lookupCache';
 import { getBybitTicker } from '../modules/crypto/bybit.service';
+import { readCryptoChangePercent24h } from '../modules/crypto/cryptoEventStore';
 
 const BYBIT_SYMBOL_BY_CHART: Record<string, string> = { BTC: 'BTCUSDT', ETH: 'ETHUSDT', SOL: 'SOLUSDT' };
 
@@ -91,9 +91,7 @@ router.get(
     // here instead of duplicated (and drifting) on every client.
     let changePercent = 0;
     let changeAmount = 0;
-    const event = timeframe === '24H'
-      ? await prisma.event.findFirst({ where: { categoryId: LOOKUP_IDS.EVENT_CATEGORY.CRYPTO, symbol } })
-      : null;
+    const storedChangePercent24h = timeframe === '24H' ? await readCryptoChangePercent24h(symbol) : null;
 
     const applyPercent = (percent: number) => {
       changePercent = percent;
@@ -122,8 +120,8 @@ router.get(
         stale = true;
       }
     }
-    if (!applied && timeframe === '24H' && event?.changePercent24h != null) {
-      applyPercent(event.changePercent24h.toNumber());
+    if (!applied && timeframe === '24H' && storedChangePercent24h != null) {
+      applyPercent(storedChangePercent24h);
       applied = true;
     }
     if (!applied) {

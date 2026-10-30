@@ -25,11 +25,23 @@ export function applyCryptoSpot(
   const asOf = eventTime(event);
   if (history.asOf && asOf && asOf <= history.asOf) return history;
   const previous = history.currentPrice;
+  const nextAsOf = asOf || history.asOf;
+  const points = history.points.slice();
+  if (points.length > 0) {
+    points[points.length - 1] = {
+      ...points[points.length - 1],
+      price,
+      timestamp: nextAsOf ?? points[points.length - 1].timestamp,
+    };
+  } else if (nextAsOf) {
+    points.push({ timestamp: nextAsOf, price });
+  }
   return {
     ...history,
     currentPrice: price,
-    asOf: asOf || history.asOf,
+    asOf: nextAsOf,
     stale: false,
+    points,
     changeAmount: previous > 0 ? history.changeAmount + (price - previous) : history.changeAmount,
   };
 }

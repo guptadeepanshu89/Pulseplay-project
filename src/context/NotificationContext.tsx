@@ -1,7 +1,7 @@
 import { createContext, PropsWithChildren, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 import { AppNotification } from '@/types/notification';
-import { useAlwaysLive } from '@/realtime/live';
+import { NOTIFICATION_SOCKET_TYPES, useAlwaysLive } from '@/realtime/live';
 import { getNotifications, markAllNotificationsRead, markNotificationRead } from '@/services/notificationService';
 
 interface NotificationContextValue {
@@ -49,7 +49,8 @@ export function NotificationProvider({ children }: PropsWithChildren) {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- initial load from the service layer on mount
     refresh();
   }, [refresh]);
-  useAlwaysLive(refresh, ['notification.created', 'poll', 'socket.reconnected', 'app.foreground', 'snapshot.required']);
+  // Socket badge updates only — full list refresh is demand-driven on Notifications screen.
+  useAlwaysLive(refresh, [...NOTIFICATION_SOCKET_TYPES]);
 
   const unreadCount = notifications.filter((item) => !item.read).length;
 
