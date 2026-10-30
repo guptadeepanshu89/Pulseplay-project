@@ -10,7 +10,7 @@ export interface ProviderEnvelope {
   normalized?: {
     matches?: LiveMatchOption[];
     match?: LiveMatchOption;
-    lines?: { id: string; text: string }[];
+    lines?: { id: string; text: string; overBall?: string }[];
   };
 }
 
@@ -54,6 +54,10 @@ export function getCricketScore(matchId: string, signal?: AbortSignal): Promise<
 
 export function getCricketCommentary(matchId: string, signal?: AbortSignal): Promise<ProviderEnvelope> {
   return apiRequest<ProviderEnvelope>(`/cricket/${matchId}/commentary`, { signal });
+}
+
+export function getCricketScorecard(matchId: string, signal?: AbortSignal): Promise<ProviderEnvelope> {
+  return apiRequest<ProviderEnvelope>(`/cricket/${matchId}/scorecard`, { signal });
 }
 
 export function getSimulatorMatch(signal?: AbortSignal): Promise<SimulatorMatch> {
@@ -107,9 +111,9 @@ export function liveMatchOptions(payload: unknown): LiveMatchOption[] {
     .filter((match): match is LiveMatchOption => match !== null);
 }
 
-export function commentaryLines(payload: unknown): { id: string; text: string }[] {
-  const rows = extractList(payload, ['commentary', 'balls', 'items', 'data']);
-  const lines: { id: string; text: string }[] = [];
+export function commentaryLines(payload: unknown): { id: string; text: string; overBall?: string }[] {
+  const rows = extractList(payload, ['commentary', 'bbb', 'balls', 'items', 'data']);
+  const lines: { id: string; text: string; overBall?: string }[] = [];
   rows.forEach((row, index) => {
     if (typeof row === 'string') {
       lines.push({ id: `line-${index}-${row}`, text: row });
@@ -122,7 +126,16 @@ export function commentaryLines(payload: unknown): { id: string; text: string }[
       | undefined;
     if (!text) return;
     const id = String(record.id ?? record.ball_id ?? record.timestamp ?? `${index}-${text}`);
-    lines.push({ id, text });
+    const overs = record.overs ?? record.over_ball;
+    const overBall =
+      typeof record.over === 'number' && typeof record.ball === 'number'
+        ? `${record.over}.${record.ball}`
+        : typeof overs === 'number'
+          ? String(overs)
+          : typeof record.overBall === 'string'
+            ? record.overBall
+            : undefined;
+    lines.push({ id, text, ...(overBall ? { overBall } : {}) });
   });
   return lines;
 }

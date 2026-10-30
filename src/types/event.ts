@@ -14,6 +14,12 @@ export interface MarketEvent {
   homeTeam?: EventParticipant;
   awayTeam?: EventParticipant;
   symbol?: string;
+  scoresUpdatedAt?: string;
+  scoresProvider?: string;
+  scoresUnavailable?: boolean;
+  scoresStale?: boolean;
+  /** CricketData match UUID when this event is mapped to a live provider fixture. */
+  providerMatchId?: string;
 }
 
 export interface EventParticipant {

@@ -22,6 +22,8 @@ export function RefreshableScrollView({ onRefresh, contentContainerStyle, childr
     <ScrollView
       contentContainerStyle={contentContainerStyle}
       showsVerticalScrollIndicator={false}
+      nestedScrollEnabled={false}
+      directionalLockEnabled
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.accent} />
       }
